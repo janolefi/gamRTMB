@@ -18,6 +18,8 @@ Description: Fits GAMLSS-style distributional regression models in which
     smoothing parameters can be shared between terms and between
     distributional parameters.
 License: GPL-2 | GPL-3
+Depends: 
+    R (>= 4.0)
 Encoding: UTF-8
 LazyData: true
 URL: https://github.com/janolefi/gamRTMB, https://janolefi.github.io/gamRTMB/

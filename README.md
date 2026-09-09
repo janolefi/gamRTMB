@@ -5,6 +5,7 @@
 
 <!-- badges: start -->
 
+[![R-CMD-check](https://github.com/janolefi/gamRTMB/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/janolefi/gamRTMB/actions/workflows/R-CMD-check.yaml)
 <!-- badges: end -->
 
 Distributional (GAMLSS-style) regression where smooth terms can enter

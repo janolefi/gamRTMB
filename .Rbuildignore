@@ -6,3 +6,6 @@
 ^docs$
 ^pkgdown$
 ^\.github$
+^README\.html$
+^Rplots\.pdf$
+^figure$
