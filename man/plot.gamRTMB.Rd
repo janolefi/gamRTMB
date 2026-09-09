@@ -6,8 +6,10 @@
 \usage{
 \method{plot}{gamRTMB}(
   x,
-  type = c("terms", "qq", "worm"),
+  type = c("terms", "qq", "worm", "quantile"),
   select = NULL,
+  prob = c(0.05, 0.25, 0.5, 0.75, 0.95),
+  xvar = NULL,
   se = TRUE,
   rug = TRUE,
   band.col = "grey85",
@@ -25,6 +27,11 @@
 \item{select}{Which smooths to draw: an integer index, or a pattern matched
 against the \code{parameter: term} labels (e.g. \code{"sd"} or \code{"s(x1)"}). Defaults
 to all of them.}
+
+\item{prob}{Probabilities for \code{type = "quantile"}.}
+
+\item{xvar}{Covariate for the x-axis of a quantile plot. Defaults to the
+covariate of the first smooth.}
 
 \item{se}{Draw the interval band.}
 
@@ -63,6 +70,24 @@ with \code{joint_precision = TRUE}, which is the default. Panels are titled
 Only one-dimensional smooths of a numeric covariate are drawn. Tensor
 products, random effects (\code{bs = "re"}) and factor-smooth interactions
 (\code{bs = "fs"}) are reported and skipped rather than drawn misleadingly.
+}
+
+\section{Quantile plots (\code{type = "quantile"})}{
+
+Fitted quantiles of the response against one covariate, over the observed
+data. This is the picture that letting every parameter vary is \emph{for}: the
+curves fan out and contract as the fitted spread and shape change, which no
+mean-only model can show. Other covariates are held at a typical value —
+the median for a numeric one, the modal level for a factor — so with more
+than one covariate the points and the curves do not condition on quite the
+same thing.
+
+A band is drawn for the central curve only, and only for a continuous
+response. Bands on every quantile would be unreadable, and it is the middle
+of the distribution whose estimation uncertainty one usually wants next to
+the spread the other curves already show. Note that this band is the
+central curve's own uncertainty and is not a prediction interval — the
+outer quantiles are that.
 }
 
 \section{Diagnostics (\code{type = "qq"}, \code{type = "worm"})}{

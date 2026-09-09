@@ -7,11 +7,11 @@
 .plot_spec(sm, data)
 }
 \description{
-A one-dimensional smooth of a numeric covariate can be drawn on its own,
-so keep the covariate values (for the range and the rug) and, for a \verb{by=}
-smooth, the value of the \code{by} variable that \code{\link[mgcv:smoothCon]{mgcv::PredictMat()}} will want:
-the smooth's own factor level, or 1 for a numeric \code{by}. Storing this means
-plotting needs neither the original data frame nor a refit.
+A one-dimensional smooth of a numeric covariate can be drawn on its own, so
+record which covariate it uses and, for a \verb{by=} smooth, the value of the
+\code{by} variable that \code{\link[mgcv:smoothCon]{mgcv::PredictMat()}} will want: the smooth's own factor
+level, or 1 for a numeric \code{by}. The covariate values themselves come from
+the fit's stored model frame.
 }
 \details{
 Returns \code{NULL} for anything not drawable as a single curve — tensor

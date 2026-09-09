@@ -7,7 +7,8 @@
 \method{predict}{gamRTMB}(
   object,
   newdata = NULL,
-  type = c("link", "response", "terms"),
+  type = c("link", "response", "terms", "quantile"),
+  prob = c(0.05, 0.25, 0.5, 0.75, 0.95),
   se.fit = FALSE,
   ...
 )
@@ -20,8 +21,11 @@ in-sample linear predictors are returned.}
 
 \item{type}{\code{"link"} (default) for the linear predictors, \code{"response"} for
 the parameters on their natural scale, \code{"terms"} for the contribution of
-each smooth separately. As in mgcv, \code{"terms"} excludes the intercept and
-any offset, which belong to the predictor rather than to a smooth.}
+each smooth separately, or \code{"quantile"} for quantiles of the fitted
+distribution. As in mgcv, \code{"terms"} excludes the intercept and any
+offset, which belong to the predictor rather than to a smooth.}
+
+\item{prob}{Probabilities for \code{type = "quantile"}.}
 
 \item{se.fit}{Also return standard errors; needs a fit made with
 \code{joint_precision = TRUE}.}
@@ -30,9 +34,10 @@ any offset, which belong to the predictor rather than to a smooth.}
 }
 \value{
 For \code{type = "link"}/\code{"response"}, a named list with one vector per
-distributional parameter (or, with \code{se.fit = TRUE}, a list of \code{fit} and
-\code{se.fit}). For \code{type = "terms"}, a named list with a matrix of per-term
-contributions for each parameter.
+distributional parameter. For \code{type = "terms"}, a named list with a matrix
+of per-term contributions for each parameter. For \code{type = "quantile"}, a
+matrix with one column per probability. With \code{se.fit = TRUE}, a list of
+\code{fit} and \code{se.fit} in the same shape.
 }
 \description{
 New data goes through \code{\link[mgcv:smoothCon]{mgcv::PredictMat()}} on the stored \code{smoothCon}
@@ -40,3 +45,18 @@ objects, so the basis, knots and constraint matrices are exactly those of
 the fit. Smooths are never re-fitted on new data, which would place
 different knots.
 }
+\section{Quantiles}{
+
+\code{type = "quantile"} evaluates the fitted distribution's quantile function
+at each observation, giving covariate-dependent quantiles — which is much
+of the point of letting every parameter vary. It needs the family to have a
+quantile function; \code{\link[=families]{families()}} reports which do.
+
+Their standard errors come from the delta method: the quantile is
+differentiated numerically with respect to each linear predictor, and those
+derivatives are combined with the predictors' joint covariance, including
+the covariance \emph{between} distributional parameters. Offered only for a
+continuous response, because for a lattice or mixed one the quantile
+function is a step and its derivative is not meaningful.
+}
+

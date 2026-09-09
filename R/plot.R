@@ -11,10 +11,14 @@
 #' Colour-blind safe palette
 #'
 #' Okabe-Ito, in base R since 4.0, so no dependency. Used only where series
-#' are overlaid; a single-series plot needs no colour at all.
+#' are overlaid; a single-series plot needs no colour at all. The pale yellow
+#' is dropped: it is fine for fills but too low-contrast for a line on white.
 #'
 #' @keywords internal
-.pal <- function(n) grDevices::palette.colors(max(n, 2L), "Okabe-Ito")[seq_len(n)]
+.pal <- function(n) {
+  p <- grDevices::palette.colors(8, "Okabe-Ito")[c(1, 2, 3, 4, 6, 7, 8)]
+  rep_len(p, max(n, 1L))[seq_len(max(n, 1L))]
+}
 
 #' Call a graphics function with our defaults under the caller's `...`
 #'
@@ -49,6 +53,22 @@
 #' products, random effects (`bs = "re"`) and factor-smooth interactions
 #' (`bs = "fs"`) are reported and skipped rather than drawn misleadingly.
 #'
+#' @section Quantile plots (`type = "quantile"`):
+#' Fitted quantiles of the response against one covariate, over the observed
+#' data. This is the picture that letting every parameter vary is *for*: the
+#' curves fan out and contract as the fitted spread and shape change, which no
+#' mean-only model can show. Other covariates are held at a typical value —
+#' the median for a numeric one, the modal level for a factor — so with more
+#' than one covariate the points and the curves do not condition on quite the
+#' same thing.
+#'
+#' A band is drawn for the central curve only, and only for a continuous
+#' response. Bands on every quantile would be unreadable, and it is the middle
+#' of the distribution whose estimation uncertainty one usually wants next to
+#' the spread the other curves already show. Note that this band is the
+#' central curve's own uncertainty and is not a prediction interval — the
+#' outer quantiles are that.
+#'
 #' @section Diagnostics (`type = "qq"`, `type = "worm"`):
 #' Both use the randomised quantile residuals of [residuals.gamRTMB()]. The QQ
 #' plot references the identity line, because these residuals should be
@@ -77,6 +97,9 @@
 #' @param rug Add a rug of the observed covariate values.
 #' @param band.col Fill for the interval band. A solid light grey by default,
 #'   which renders the same on every device.
+#' @param prob Probabilities for `type = "quantile"`.
+#' @param xvar Covariate for the x-axis of a quantile plot. Defaults to the
+#'   covariate of the first smooth.
 #' @param nsim Randomisation draws to overlay in a QQ or worm plot.
 #' @param ask Draw one panel per page, waiting between them, instead of
 #'   fitting everything onto one page.
@@ -94,14 +117,104 @@
 #' plot(fit, select = "sd")
 #' plot(fit, type = "worm")
 #' @export
-plot.gamRTMB <- function(x, type = c("terms", "qq", "worm"), select = NULL,
-                         se = TRUE, rug = TRUE, band.col = "grey85",
-                         nsim = 1, ask = FALSE, n = 200, ...) {
+plot.gamRTMB <- function(x, type = c("terms", "qq", "worm", "quantile"),
+                         select = NULL, prob = c(0.05, 0.25, 0.5, 0.75, 0.95),
+                         xvar = NULL, se = TRUE, rug = TRUE,
+                         band.col = "grey85", nsim = 1, ask = FALSE,
+                         n = 200, ...) {
   type <- match.arg(type)
   switch(type,
-    terms = .plot_terms(x, select, se, rug, band.col, ask, n, ...),
-    qq    = .plot_res(x, nsim, FALSE, se, band.col, ...),
-    worm  = .plot_res(x, nsim, TRUE,  se, band.col, ...))
+    terms    = .plot_terms(x, select, se, rug, band.col, ask, n, ...),
+    qq       = .plot_res(x, nsim, FALSE, se, band.col, ...),
+    worm     = .plot_res(x, nsim, TRUE,  se, band.col, ...),
+    quantile = .plot_quantile(x, xvar, prob, se, band.col, n, ...))
+}
+
+#' The emptiest corner, for a legend
+#'
+#' Counts what is drawn in each corner of the plotting region and returns the
+#' least crowded, so a five-curve legend does not land on top of the curves.
+#' `xs` and `ys` must be matched coordinates of everything drawn.
+#'
+#' @keywords internal
+.empty_corner <- function(xs, ys, yl) {
+  fx <- (xs - min(xs)) / max(diff(range(xs)), 1e-12)
+  fy <- (ys - yl[1L]) / max(diff(yl), 1e-12)
+  n <- c(topleft = sum(fx < .35 & fy > .65), topright = sum(fx > .65 & fy > .65),
+         bottomleft = sum(fx < .35 & fy < .35),
+         bottomright = sum(fx > .65 & fy < .35))
+  names(n)[which.min(n)]
+}
+
+#' Fitted quantiles against one covariate
+#' @keywords internal
+.plot_quantile <- function(x, xvar, prob, se, band.col, ngrid, ...) {
+  D <- x$design
+  if (is.null(xvar)) {
+    v <- unlist(lapply(D$parnames, function(p)
+      lapply(D$parts[[p]]$smooths, function(s) s$plot1d$var)))
+    if (!length(v))
+      stop("no smooth covariate to plot against; name one with xvar =")
+    xvar <- v[[1L]]
+  }
+  if (!xvar %in% names(x$data))
+    stop("`xvar` must name a column of the model data: ",
+         paste(names(x$data), collapse = ", "))
+  xv <- x$data[[xvar]]
+  if (!is.numeric(xv)) stop("`xvar` must be a numeric covariate")
+
+  ## other covariates at a typical value, so one curve per probability
+  nd <- x$data[rep(1L, ngrid), , drop = FALSE]
+  for (v in setdiff(names(nd), xvar)) {
+    cl <- x$data[[v]]
+    nd[[v]] <- if (is.factor(cl))
+      factor(rep(names(which.max(table(cl))), ngrid), levels = levels(cl))
+      else rep(stats::median(cl), ngrid)
+  }
+  nd[[xvar]] <- seq(min(xv), max(xv), length.out = ngrid)
+
+  band <- se && x$family$support == "continuous"
+  qq <- stats::predict(x, newdata = nd, type = "quantile", prob = prob,
+                       se.fit = band)
+  Q <- if (band) qq$fit else qq
+  S <- if (band) qq$se.fit else NULL
+  mid <- which.min(abs(prob - 0.5))
+
+  dots <- list(...)
+  pch <- .or_else(dots$pch, 20); cx <- .or_else(dots$cex, 0.5)
+  dots$pch <- dots$cex <- NULL
+  ## Quantiles come in symmetric pairs, so code them by distance from the
+  ## median: same colour and line type for a pair, black and thickest for the
+  ## middle. That stays readable in greyscale as well as in colour.
+  ## rounded, or 0.05 and 0.95 fail to pair up in floating point
+  dist <- round(abs(prob - 0.5), 8)
+  lvl <- match(dist, sort(unique(dist)))
+  cols <- .or_else(dots$col, .pal(max(lvl)))[lvl]
+  dots$col <- NULL
+  ## step curves for a lattice response, where quantiles really are steps
+  ltype <- if (x$family$support == "continuous") "l" else "s"
+  yl <- range(c(x$y, Q, if (band) c(Q[, mid] - 2 * S[, mid],
+                                    Q[, mid] + 2 * S[, mid])), finite = TRUE)
+
+  .gcall(graphics::plot,
+         list(x = xv, y = x$y, type = "n", bty = "n", ylim = yl,
+              xlab = xvar, ylab = deparse(x$formula[[2L]]),
+              main = paste0("fitted quantiles: ", x$family$family)), dots)
+  if (band) .band(nd[[xvar]], Q[, mid] - 2 * S[, mid], Q[, mid] + 2 * S[, mid],
+                  band.col)
+  graphics::points(xv, x$y, pch = pch, cex = cx,
+                   col = grDevices::adjustcolor("black", 0.4))
+  for (k in seq_along(prob))
+    graphics::lines(nd[[xvar]], Q[, k], type = ltype, col = cols[k],
+                    lty = lvl[k], lwd = if (k == mid) 3 else 2)
+  graphics::legend(.empty_corner(c(xv, rep(nd[[xvar]], ncol(Q))),
+                                 c(x$y, as.vector(Q)), yl),
+                   legend = paste0(100 * prob, "%"), bty = "n", col = cols,
+                   lty = lvl, lwd = 2, cex = 0.85)
+  out <- data.frame(nd[[xvar]], Q)
+  names(out) <- c(xvar, colnames(Q))
+  if (band) out$se.mid <- S[, mid]
+  invisible(out)
 }
 
 #' @keywords internal
@@ -142,7 +255,8 @@ plot.gamRTMB <- function(x, type = c("terms", "qq", "worm"), select = NULL,
   ## build every curve first, so a failure cannot leave a half-drawn page
   curves <- lapply(tl, function(t) {
     ps <- t$s$plot1d
-    xg <- seq(min(ps$x), max(ps$x), length.out = ngrid)
+    xv <- x$data[[ps$var]]
+    xg <- seq(min(xv), max(xv), length.out = ngrid)
     nd <- stats::setNames(list(xg), ps$var)
     if (!is.null(ps$by)) nd[[ps$by]] <- rep(ps$by_val, ngrid)
     Xs <- mgcv::PredictMat(t$s$sm, as.data.frame(nd, stringsAsFactors = FALSE))
@@ -182,7 +296,7 @@ plot.gamRTMB <- function(x, type = c("terms", "qq", "worm"), select = NULL,
            dots)
     if (!all(is.na(cv$se))) .band(cv$x, lo, hi, fill)
     graphics::lines(cv$x, cv$fit, col = col, lwd = lwd)
-    if (rug) graphics::rug(ps$x, col = grDevices::adjustcolor(col, 0.4))
+    if (rug) graphics::rug(x$data[[ps$var]], col = grDevices::adjustcolor(col, 0.4))
   }
   invisible(curves)
 }

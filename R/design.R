@@ -149,11 +149,11 @@
 
 #' What a term plot needs, recorded at design time
 #'
-#' A one-dimensional smooth of a numeric covariate can be drawn on its own,
-#' so keep the covariate values (for the range and the rug) and, for a `by=`
-#' smooth, the value of the `by` variable that [mgcv::PredictMat()] will want:
-#' the smooth's own factor level, or 1 for a numeric `by`. Storing this means
-#' plotting needs neither the original data frame nor a refit.
+#' A one-dimensional smooth of a numeric covariate can be drawn on its own, so
+#' record which covariate it uses and, for a `by=` smooth, the value of the
+#' `by` variable that [mgcv::PredictMat()] will want: the smooth's own factor
+#' level, or 1 for a numeric `by`. The covariate values themselves come from
+#' the fit's stored model frame.
 #'
 #' Returns `NULL` for anything not drawable as a single curve — tensor
 #' products, random effects, factor-smooth interactions — which the plot
@@ -171,7 +171,7 @@
     bv <- data[[sm$by]]
     by_val <- if (is.factor(bv)) factor(sm$by.level, levels = levels(bv)) else 1
   }
-  list(var = sm$term, x = xv, by = if (has_by) sm$by else NULL, by_val = by_val)
+  list(var = sm$term, by = if (has_by) sm$by else NULL, by_val = by_val)
 }
 
 #' Build the design for every distributional parameter

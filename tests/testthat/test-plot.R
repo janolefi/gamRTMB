@@ -23,9 +23,8 @@ test_that("term plots return the plotted curves", {
   expect_named(r[[1]], c("x", "fit", "se"))
   expect_identical(nrow(r[[1]]), 200L)
   expect_true(all(is.finite(r[[1]]$se)) && all(r[[1]]$se > 0))
-  ## the grid spans the observed covariate range
-  expect_equal(range(r[[1]]$x), range(f$design$parts$mean$smooths[[1]]$plot1d$x),
-               tolerance = 1e-12)
+  ## the grid spans the observed covariate range, read from the stored data
+  expect_equal(range(r[[1]]$x), range(f$data$x1), tolerance = 1e-12)
   expect_identical(nrow(plot(f, n = 50)[[1]]), 50L)
 })
 

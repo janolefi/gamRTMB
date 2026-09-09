@@ -242,6 +242,7 @@ gamRTMB <- function(formula, family = fam("norm"), data, weights = NULL,
   fit$par_formulas <- pf$par_formulas
   fit$y <- y
   fit$fixed <- fx
+  fit$data <- data
   fit$weights <- w
   fit$dropped <- md$dropped
   fit$na.action <- na.action
@@ -302,10 +303,41 @@ gamRTMB <- function(formula, family = fam("norm"), data, weights = NULL,
   ## With no smooths at all there is nothing for the outer optimiser to do:
   ## every coefficient is already handled by the inner Laplace problem.
   ctl <- utils::modifyList(list(eval.max = 2000, iter.max = 1000), control)
-  opt <- if (length(obj$par))
-    stats::nlminb(obj$par, obj$fn, obj$gr, control = ctl)
-  else list(par = obj$par, objective = obj$fn(obj$par), convergence = 0L,
-            message = "no smoothing parameters to estimate")
+  ## nlminb warns whenever its line search probes a point where the objective
+  ## is not finite, which is routine and self-correcting: it backtracks and
+  ## carries on. Whether the fit actually worked is reported by `convergence`
+  ## and `max_grad`, so that intermediate complaint is muted rather than left
+  ## looking like a failure.
+  ##
+  ## A non-finite *gradient* is different: nlminb raises an error and stops.
+  ## That happens when a smoothing parameter reaches a region where the
+  ## family's own derivatives break down, and it can happen after real
+  ## progress has been made. TMB has kept the best point it saw, so the fit is
+  ## returned from there and flagged as unconverged, rather than thrown away.
+  opt <- if (!length(obj$par))
+    list(par = obj$par, objective = obj$fn(obj$par), convergence = 0L,
+         message = "no smoothing parameters to estimate")
+  else tryCatch(
+    withCallingHandlers(
+      stats::nlminb(obj$par, obj$fn, obj$gr, control = ctl),
+      warning = function(w) {
+        if (grepl("NA/NaN function evaluation", conditionMessage(w)))
+          invokeRestart("muffleWarning")
+      }),
+    error = function(e) {
+      warning("the outer optimiser stopped early: ", conditionMessage(e),
+              ". The best point reached is returned, but the fit has not ",
+              "converged -- check `fit$convergence`, and treat the smoothing ",
+              "parameters and any standard errors with suspicion. This ",
+              "usually means a smoothing parameter ran into a region where ",
+              "family '", family$family, "' cannot be differentiated.",
+              call. = FALSE)
+      best <- obj$env$last.par.best
+      pf <- tryCatch(best[obj$env$lfixed()], error = function(e2) obj$par)
+      val <- obj$env$value.best
+      list(par = pf, convergence = 1L, message = conditionMessage(e),
+           objective = if (length(val) == 1L && is.finite(val)) val else NA_real_)
+    })
   sdr <- RTMB::sdreport(obj, getJointPrecision = joint_precision)
 
   pl <- obj$env$parList(par = obj$env$last.par.best)
@@ -314,7 +346,8 @@ gamRTMB <- function(formula, family = fam("norm"), data, weights = NULL,
        log_sigma = pl$log_sigma,               # full length, not the mapped one
        objective = opt$objective,
        convergence = opt$convergence == 0,
-       max_grad = if (length(obj$par)) max(abs(obj$gr(opt$par))) else 0)
+       max_grad = if (!length(obj$par)) 0 else
+         tryCatch(max(abs(obj$gr(opt$par))), error = function(e) NA_real_))
 }
 
 #' Extended Fellner-Schall engine (not implemented)

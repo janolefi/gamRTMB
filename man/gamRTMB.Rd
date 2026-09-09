@@ -84,7 +84,8 @@ differentiation and Laplace approximation, over the log-densities in
 \item \code{nobs(gamRTMB)}: Number of observations actually used.
 
 \item \code{coef(gamRTMB)}: Coefficients, as a list of the fixed (\code{beta}) and
-penalized (\code{b}) vectors plus the log variance components.
+penalized (\code{b}) vectors plus the log variance components. \code{beta} and
+\code{log_sigma} are named \code{parameter:term}.
 
 \item \code{fitted(gamRTMB)}: Fitted values of every distributional parameter, on the
 response scale.

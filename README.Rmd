@@ -34,9 +34,6 @@ Restricted maximum likelihood is the default, effective degrees of freedom per
 smooth agree with mgcv, and smoothing parameters can be shared between terms
 *and* between distributional parameters.
 
-Most of the package was written by Claude Code.
-
-
 ## Installation
 
 ``` r
@@ -46,222 +43,52 @@ pak::pak("janolefi/gamRTMB")
 
 ## Example
 
-A Gaussian location-scale model: the mean varies smoothly with `x1`, and so
-does the standard deviation.
+`MASS::mcycle` measures head acceleration in a simulated motorcycle crash. The
+mean is famously hard to model — and the variance changes just as much.
 
-```{r example}
+```{r fit}
 library(gamRTMB)
+data(mcycle, package = "MASS")
 
-set.seed(1)
-n <- 500
-d <- data.frame(x1 = runif(n), x2 = runif(n))
-d$y <- rnorm(n, mean = sin(2 * pi * d$x1) + d$x2^2,
-             sd = exp(-1 + 0.8 * cos(2 * pi * d$x1)))
-
-fit <- gamRTMB(y ~ list(mean = ~ s(x1) + s(x2), sd = ~ s(x1)), data = d)
-fit
-```
-
-`summary()` lays this out per distributional parameter — every parameter has
-its own formula, link, coefficients and smooths:
-
-```{r summary}
+fit <- gamRTMB(accel ~ list(mean = ~ s(times, k = 20),
+                            sd   = ~ s(times, k = 12)),
+               data = mcycle)
 summary(fit)
 ```
 
-Smooth terms are reported with their effective degrees of freedom and
-smoothing parameters, but deliberately without p-values: mgcv's "approximate
-significance" rests on Wood's test for a term's whole coefficient block, and a
-naive Wald test in its place would mislead. `edf(fit)` returns that table on
-its own.
+Once every parameter varies, the useful output is covariate-dependent
+quantiles rather than a mean and one standard error:
 
-`AIC()` and `BIC()` use the log-likelihood at the fitted coefficients with the
-total effective degrees of freedom — the same convention as mgcv and GAMLSS's
-GAIC — not the REML criterion, which is not a likelihood and is not comparable
-across mean structures. The criterion itself stays available as
-`fit$objective`.
-
-```{r aic}
-c(logLik = as.numeric(logLik(fit)), df = attr(logLik(fit), "df"), AIC = AIC(fit))
+```{r quantiles, fig.height = 4.6, fig.width = 7}
+plot(fit, type = "quantile")
 ```
 
-Predictions come back as one vector per distributional parameter. New data is
-pushed through `mgcv::PredictMat()` on the stored smooths, so the basis and
-knots are exactly those of the fit:
+Term plots, a worm plot of randomised quantile residuals, and everything else
+are in `vignette("gamRTMB")`.
 
-```{r predict}
-grid <- data.frame(x1 = seq(0, 1, length.out = 5), x2 = 0.5)
-predict(fit, newdata = grid, type = "response")
-```
+## What it does
 
-### Any family
+| | |
+|---|---|
+| Families | 85, from RTMBdist plus the standard R densities; `families()` lists them, `fam()` builds one |
+| Formula | `y ~ list(mean = ~ s(x), sd = ~ s(z))`, one one-sided formula per parameter, missing ones get `~1` |
+| Smooths | `s()`, `t2()`, `by=`, `bs="fs"`, `bs="re"`, shrinkage bases, and `id=` to share smoothing parameters |
+| Criterion | REML by default (coefficients integrated out by the same Laplace approximation), or ML |
+| Inference | `summary()`, `vcov()`, `edf()`, `AIC()`/`BIC()`, `predict()` with standard errors |
+| Diagnostics | `residuals()` gives randomised quantile residuals; `plot(type = "worm")` |
+| Also | `weights`, `offset()` inside a parameter's formula, `na.action` |
 
-`fam()` derives the parameter names, links and starting values from the
-density itself, so nothing has to be hand-written per distribution.
-`families()` lists what is available — everything in RTMBdist that is a
-univariate regression family, plus the standard densities RTMB makes
-AD-aware:
-
-```{r families}
-nrow(families())
-families("gamma|^norm$|zipois")
-```
-
-Parameter names are always the density's own, which is why a Gaussian is
-`mean`/`sd` rather than `mu`/`sigma`. Here a skew normal, with a smooth on
-all three of its parameters at once:
-
-```{r skewnorm}
-f <- fam("skewnorm2")
-f
-
-set.seed(2)
-n <- 1500
-d2 <- data.frame(x1 = runif(n), x2 = runif(n), x3 = runif(n))
-d2$y <- RTMBdist::rskewnorm2(n,
-  mean  = sin(2 * pi * d2$x1),
-  sd    = exp(-0.2 + 0.5 * cos(2 * pi * d2$x2)),
-  alpha = 2.5 * sin(2 * pi * d2$x3))
-
-fit2 <- gamRTMB(y ~ list(mean = ~ s(x1), sd = ~ s(x2), alpha = ~ s(x3)),
-                family = f, data = d2)
-edf(fit2)
-```
-
-Parameters that are known data rather than quantities to model — the number of
-binomial trials, truncation bounds — are declared separately and are not
-reachable from the formula:
-
-```{r fixed}
-fam("betabinom", fixed = list(size = "trials"))
-```
-
-### Weights, offsets and missing data
-
-Prior weights multiply each observation's log-density contribution, exactly as
-in `glm()`. An `offset()` goes inside the formula of the parameter it belongs
-to — per-parameter, because `sd = ~ offset(log(s))` means something quite
-different from the same term on `mean`. Missing values in any model variable
-are handled by `na.action`, `na.omit` by default, and the number of dropped
-rows is reported.
-
-```{r plumbing}
-set.seed(4)
-n <- 400
-p <- data.frame(x = runif(n), E = runif(n, 1, 5))
-p$y <- rpois(n, p$E * exp(sin(2 * pi * p$x)))
-p$y[1:3] <- NA
-
-fit_p <- gamRTMB(y ~ list(lambda = ~ s(x) + offset(log(E))),
-                 family = fam("pois"), data = p,
-                 weights = rep(c(1, 2), n / 2))
-fit_p
-```
-
-### Shared smoothing parameters
-
-`s(..., id = )` ties smooths to one smoothing parameter, exactly as in mgcv
-(including the linked bases, so the shared variance means the same thing for
-each term). Unlike mgcv, the group may span distributional parameters:
-
-```{r id}
-fit3 <- gamRTMB(y ~ list(mean = ~ s(x1, id = "sh"),
-                         sd   = ~ s(x1, id = "sh")),
-                data = d)
-fit3
-edf(fit3)
-```
-
-## Diagnostics
-
-`residuals()` gives randomised quantile (pseudo) residuals via the
-probability integral transform, so a QQ plot checks the whole distributional
-assumption and not just the mean. Where the response has atoms the residual is
-randomised within the step, using the family's declared support to get the
-left limit of the CDF — `F(y-1)` for a lattice response, `F(y) - p(y)` at an
-atom of a mixed one.
-
-```{r residuals, fig.height = 3.2, fig.width = 6.4}
-set.seed(6)
-n <- 1200
-z <- data.frame(x = runif(n))
-z$y <- ifelse(runif(n) < 0.35, 0, rpois(n, exp(1.5 + sin(2 * pi * z$x))))
-
-wrong <- gamRTMB(y ~ list(lambda = ~ s(x)), family = fam("pois"), data = z)
-right <- gamRTMB(y ~ list(lambda = ~ s(x), zeroprob = ~ 1),
-                 family = fam("zipois"), data = z)
-
-par(mfrow = c(1, 2))
-set.seed(1); plot(wrong, type = "worm", main = "fitted as pois")
-set.seed(1); plot(right, type = "worm", main = "fitted as zipois")
-```
-
-A worm plot is the detrended QQ plot, which makes it easier to see *where*
-the distribution is wrong; `type = "qq"` gives the plain version. Because
-residuals for a discrete response are randomised, `nsim` overlays several
-draws so the randomisation is visible rather than hidden.
-
-The zero-inflated data fitted as a plain Poisson bends away from the line;
-the same data with a `zeroprob` parameter does not. `families()` reports which
-families have a CDF, and so which support residuals.
-
-## Term plots
-
-`plot()` draws one panel per smooth: its contribution to that parameter's
-linear predictor, with a pointwise ±2 SE band. The band comes from the joint
-covariance, so it includes the uncertainty in the smoothing parameters
-(mgcv's `unconditional = TRUE`).
-
-```{r terms, fig.height = 5, fig.width = 7}
-plot(fit)
-```
-
-`select` picks one term out, by index or by a pattern matched against the
-`parameter: term` labels. Anything in `...` reaches the underlying `plot()`,
-and `bty = "n"` is a default you can override:
-
-```{r terms-one, fig.height = 3.4, fig.width = 5}
-plot(fit, select = "sd", col = "firebrick", lwd = 2,
-     main = "smooth on the log sd")
-```
-
-The plotted curves come back invisibly, so a panel can be rebuilt by hand —
-here against the truth used to simulate:
-
-```{r terms-grab, fig.keep = "none"}
-cv <- plot(fit, select = 1)[[1]]   # returns the curve; also draws it
-str(cv)
-```
-
-```{r terms-data, fig.height = 3.4, fig.width = 5}
-par(mar = c(4, 4, 1, 1))
-plot(cv$x, cv$fit, type = "l", lwd = 2, ylim = c(-2, 2), bty = "n",
-     xlab = "x1", ylab = "s(x1)")
-polygon(c(cv$x, rev(cv$x)), c(cv$fit + 2 * cv$se, rev(cv$fit - 2 * cv$se)),
-        col = adjustcolor("steelblue", 0.25), border = NA)
-lines(cv$x, cv$fit, lwd = 2)
-lines(cv$x, sin(2 * pi * cv$x) - mean(sin(2 * pi * d$x1)),
-      col = "firebrick", lty = 3, lwd = 2)
-legend("topright", c("fitted", "truth"), col = c(1, "firebrick"),
-       lty = c(1, 3), bty = "n")
-```
-
-`predict(se.fit = TRUE)` gives the same standard errors numerically, per term
-or for the whole linear predictor, if you would rather build everything
-yourself.
-
-## Status and scope
+## Status
 
 Early but checked. EDF and fitted values agree with `mgcv::gam(family =
-gaulss())` to three decimals, with and without shared smoothing parameters,
-and `predict()` on the fitting data reproduces the in-sample linear predictors
-to machine precision.
+gaulss())` to three decimals, with and without shared smoothing parameters;
+`predict()` on the fitting data reproduces the in-sample linear predictors to
+machine precision; and quantile standard errors match both an analytic special
+case and simulation from the joint posterior.
 
-Supported: `s()`, `t2()`, `by =` variables, `bs = "fs"`, `bs = "re"`, and
-`id =`. Not supported: `te()` (mgcv itself declines
-`smooth2random(type = 2)` for it — use `t2()`) and `fx = TRUE` (no penalized
-part to make random).
-
-An extended Fellner–Schall fitting engine is planned as an alternative to the
-Laplace one; `dev/NOTES-fellner-schall.md` records the derivation and the
-seams it needs.
+Not supported: `te()` (mgcv itself declines `smooth2random(type = 2)` for it —
+use `t2()`), `fx = TRUE`, and smooths whose unpenalized null spaces overlap
+(use a shrinkage basis, `bs = "ts"`). Not yet implemented: smooth-term
+p-values, 2-D smooth plots, and an extended Fellner–Schall fitting engine as
+an alternative to the Laplace one — `dev/NOTES-fellner-schall.md` records the
+derivation and the seams it needs.

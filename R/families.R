@@ -166,35 +166,39 @@
   NULL
 }
 
-#' Locate the CDF matching a density
+#' Locate the CDF or quantile function matching a density
 #'
-#' `p<dist>` in the density's own namespace, else in \pkg{stats}. Residuals
-#' are computed after fitting, on plain numerics, so the CDF never has to be
-#' AD-compatible.
+#' `p<dist>` or `q<dist>` in the density's own namespace, else in \pkg{stats}.
+#' Neither has to be AD-compatible: residuals and quantiles are computed after
+#' fitting, on plain numerics.
 #'
-#' A few RTMBdist CDFs take extra arguments the density does not (`ncp`,
+#' A few RTMBdist versions take extra arguments the density does not (`ncp`,
 #' `method`, `from`, `tol`), which is harmless. The case that matters is the
-#' reverse: if a modelled parameter is missing from the CDF's arguments it
-#' cannot be evaluated faithfully, so no CDF is offered rather than one with a
-#' parameter silently dropped.
+#' reverse: if a modelled parameter is missing from the arguments the function
+#' cannot be evaluated faithfully, so nothing is offered rather than something
+#' with a parameter silently dropped.
 #'
+#' @param prefix `"p"` for the CDF, `"q"` for the quantile function.
+#' @param dist,source Density name and the package it came from.
+#' @param modelled The modelled parameter names.
+#' @return A function of `(x, theta, fx)`, or `NULL`.
 #' @keywords internal
-.find_cdf <- function(dist, source, modelled) {
-  pn <- paste0("p", dist)
-  pf <- NULL
+.find_pfun <- function(prefix, dist, source, modelled) {
+  nm <- paste0(prefix, dist)
+  f <- NULL
   for (ns in c(source, "stats"))
-    if (exists(pn, asNamespace(ns), inherits = FALSE)) {
-      cand <- get(pn, envir = asNamespace(ns))
-      if (is.function(cand)) { pf <- cand; break }
+    if (exists(nm, asNamespace(ns), inherits = FALSE)) {
+      cand <- get(nm, envir = asNamespace(ns))
+      if (is.function(cand)) { f <- cand; break }
     }
-  if (is.null(pf)) return(NULL)
-  pargs <- names(formals(pf))
-  if (!all(modelled %in% pargs)) return(NULL)
-  qname <- pargs[1L]
-  function(y, theta, fx = list()) {
-    args <- c(list(y), theta[modelled], fx[intersect(names(fx), pargs)])
-    names(args)[1L] <- qname
-    do.call(pf, args)
+  if (is.null(f)) return(NULL)
+  a <- names(formals(f))
+  if (!all(modelled %in% a)) return(NULL)
+  first <- a[1L]
+  function(x, theta, fx = list()) {
+    args <- c(list(x), theta[modelled], fx[intersect(names(fx), a)])
+    names(args)[1L] <- first
+    do.call(f, args)
   }
 }
 
@@ -426,7 +430,8 @@ fam <- function(dist, links = NULL, fixed = NULL, support = NULL,
   structure(list(family = sp$dist, dist = sp$name, source = sp$source,
                  parnames = modelled,
                  support = sp$support, atoms = sp$atoms,
-                 cdf = .find_cdf(sp$dist, sp$source, modelled),
+                 cdf = .find_pfun("p", sp$dist, sp$source, modelled),
+                 qf  = .find_pfun("q", sp$dist, sp$source, modelled),
                  links = stats::setNames(as.character(lk), modelled),
                  fixed = sp$fixed, derived = sp$derived,
                  logdens = logdens, start = start_fun, eta_scale = scale_fun),
@@ -465,7 +470,8 @@ families <- function(pattern = NULL) {
                                   collapse = ", "),
                needs = paste(sp$needs, collapse = ", "),
                support = sp$support,
-               residuals = !is.null(.find_cdf(sp$dist, sp$source, sp$modelled)),
+               residuals = !is.null(.find_pfun("p", sp$dist, sp$source, sp$modelled)),
+               quantiles = !is.null(.find_pfun("q", sp$dist, sp$source, sp$modelled)),
                source = sp$source, row.names = NULL)
   })
   out <- do.call(rbind, rows)
@@ -490,7 +496,12 @@ print.gamRTMB_family <- function(x, ...) {
         " (computed by the density)\n", sep = "")
   cat("  support:  ", x$support,
       if (length(x$atoms)) paste0(" (atoms at ", paste(x$atoms, collapse = ", "), ")") else "",
-      if (is.null(x$cdf)) "; no CDF, so no residuals" else "", "\n", sep = "")
+      "\n", sep = "")
+  miss <- c(if (is.null(x$cdf)) "residuals", if (is.null(x$qf)) "quantiles")
+  if (length(miss))
+    cat("  no ", paste(miss, collapse = " or "), ": the density has no ",
+        paste(c(if (is.null(x$cdf)) "CDF", if (is.null(x$qf)) "quantile function"),
+              collapse = " or "), "\n", sep = "")
   invisible(x)
 }
 

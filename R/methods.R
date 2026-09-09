@@ -6,9 +6,11 @@ print.gamRTMB <- function(x, ...) {
       paste(sprintf("%s/%s", x$family$parnames, x$family$links), collapse = ", "),
       ")\n", sep = "")
   cat("  criterion: ", x$method, "   engine: ", x$engine, "\n", sep = "")
-  cat("  converged: ", x$convergence, "   -logLik: ",
+  cat("  converged: ", x$convergence, "   -", x$method, ": ",
       sprintf("%.4f", x$objective), "   max|grad|: ",
       sprintf("%.3g", x$max_grad), "\n", sep = "")
+  if (!isTRUE(x$convergence) && nzchar(.or_else(x$opt$message, "")))
+    cat("  optimiser: ", x$opt$message, "\n", sep = "")
   cat("  observations: ", D$n,
       if (isTRUE(x$dropped > 0)) paste0(" (", x$dropped, " dropped: missing)") else "",
       if (!is.null(x$weights)) ", prior weights" else "", "\n", sep = "")
@@ -206,25 +208,42 @@ print.summary.gamRTMB <- function(x, ...) {
 #' @param object A `gamRTMB` fit.
 #' @param newdata Optional data frame. If omitted, the fitting data's
 #'   in-sample linear predictors are returned.
+#' @section Quantiles:
+#' `type = "quantile"` evaluates the fitted distribution's quantile function
+#' at each observation, giving covariate-dependent quantiles — which is much
+#' of the point of letting every parameter vary. It needs the family to have a
+#' quantile function; [families()] reports which do.
+#'
+#' Their standard errors come from the delta method: the quantile is
+#' differentiated numerically with respect to each linear predictor, and those
+#' derivatives are combined with the predictors' joint covariance, including
+#' the covariance *between* distributional parameters. Offered only for a
+#' continuous response, because for a lattice or mixed one the quantile
+#' function is a step and its derivative is not meaningful.
+#'
 #' @param type `"link"` (default) for the linear predictors, `"response"` for
 #'   the parameters on their natural scale, `"terms"` for the contribution of
-#'   each smooth separately. As in mgcv, `"terms"` excludes the intercept and
-#'   any offset, which belong to the predictor rather than to a smooth.
+#'   each smooth separately, or `"quantile"` for quantiles of the fitted
+#'   distribution. As in mgcv, `"terms"` excludes the intercept and any
+#'   offset, which belong to the predictor rather than to a smooth.
+#' @param prob Probabilities for `type = "quantile"`.
 #' @param se.fit Also return standard errors; needs a fit made with
 #'   `joint_precision = TRUE`.
 #' @param ... Ignored.
 #' @return For `type = "link"`/`"response"`, a named list with one vector per
-#'   distributional parameter (or, with `se.fit = TRUE`, a list of `fit` and
-#'   `se.fit`). For `type = "terms"`, a named list with a matrix of per-term
-#'   contributions for each parameter.
+#'   distributional parameter. For `type = "terms"`, a named list with a matrix
+#'   of per-term contributions for each parameter. For `type = "quantile"`, a
+#'   matrix with one column per probability. With `se.fit = TRUE`, a list of
+#'   `fit` and `se.fit` in the same shape.
 #' @export
 predict.gamRTMB <- function(object, newdata = NULL,
-                            type = c("link", "response", "terms"),
+                            type = c("link", "response", "terms", "quantile"),
+                            prob = c(0.05, 0.25, 0.5, 0.75, 0.95),
                             se.fit = FALSE, ...) {
   type <- match.arg(type)
   D <- object$design
   Vj <- if (se.fit) .joint_cov(object) else NULL
-  out <- list(); se <- list(); trm <- list()
+  out <- list(); se <- list(); trm <- list(); forms <- list()
 
   for (p in D$parnames) {
     P <- D$parts[[p]]
@@ -260,27 +279,103 @@ predict.gamRTMB <- function(object, newdata = NULL,
         tse[, j] <- .qform_se(sp$Z, Vj$V[ii, ii, drop = FALSE])
       }
     }
-    out[[p]] <- if (type == "response")
-      .links[[object$family$links[[p]]]]$linkinv(eta) else eta
+    out[[p]] <- if (type == "link") eta
+      else .links[[object$family$links[[p]]]]$linkinv(eta)
     trm[[p]] <- list(fit = tm, se = if (se.fit) tse else NULL)
-    if (se.fit) {
-      ## the whole predictor is the same linear form, stacked
-      L <- do.call(cbind, c(list(Xpara), Z_all))
-      ii <- c(Vj$ib[D$beta_idx[[p]][seq_len(npara)]], cols)
-      se[[p]] <- .qform_se(L, Vj$V[ii, ii, drop = FALSE])
-    }
+    ## the whole predictor is the same linear form, stacked
+    L <- do.call(cbind, c(list(Xpara), Z_all))
+    forms[[p]] <- list(eta = eta, L = L,
+                       ii = if (se.fit)
+                         c(Vj$ib[D$beta_idx[[p]][seq_len(npara)]], cols))
+    if (se.fit)
+      se[[p]] <- .qform_se(L, Vj$V[forms[[p]]$ii, forms[[p]]$ii, drop = FALSE])
   }
+
   if (type == "terms") return(trm)
+  if (type == "quantile") {
+    fam <- object$family
+    if (is.null(fam$qf))
+      stop("family '", fam$family, "' has no quantile function in ",
+           fam$source, ", so quantile predictions are not available. ",
+           "families() reports which families support them.")
+    nn <- length(out[[1L]])
+    q <- vapply(prob, function(pr) fam$qf(rep(pr, nn), out, object$fixed),
+                numeric(nn))
+    dim(q) <- c(nn, length(prob))          # vapply drops to a vector when n = 1
+    dimnames(q) <- list(NULL, paste0("q", prob))
+    if (!se.fit) return(q)
+    if (fam$support != "continuous")
+      stop("standard errors for quantiles need a continuous response; for a ",
+           substr(fam$support, 1, 20), " one the quantile function is a step")
+    sq <- .quantile_se(object, prob, forms, Vj)
+    dim(sq) <- dim(q); dimnames(sq) <- dimnames(q)
+    return(list(fit = q, se.fit = sq))
+  }
   if (se.fit) list(fit = out, se.fit = se) else out
+}
+
+#' Delta-method standard errors for fitted quantiles
+#'
+#' A quantile is a smooth function of every linear predictor at once, so its
+#' variance needs the predictors' \emph{joint} covariance, cross-parameter
+#' terms included: \eqn{Var(q) = \sum_{k,l} (\partial q / \partial \eta_k)
+#' (\partial q / \partial \eta_l) Cov(\eta_k, \eta_l)}.
+#'
+#' The derivatives are taken by central difference on the family's quantile
+#' function, which avoids needing an analytic derivative for each of the
+#' families that has one. The covariances come from the same linear forms the
+#' per-parameter standard errors use, so `Cov(eta_k, eta_l)` is one row-wise
+#' product per pair.
+#'
+#' @param object A `gamRTMB` fit.
+#' @param prob Probabilities.
+#' @param forms Per-parameter linear forms from [predict.gamRTMB()].
+#' @param Vj Joint coefficient covariance from [.joint_cov()].
+#' @param h Step for the central difference, on the link scale.
+#' @return A matrix of standard errors, one column per probability.
+#' @keywords internal
+.quantile_se <- function(object, prob, forms, Vj, h = 1e-4) {
+  fam <- object$family
+  pn <- object$design$parnames
+  K <- length(pn); n <- length(forms[[1L]]$eta)
+  linkinv <- lapply(fam$links, function(l) .links[[l]]$linkinv)
+  etas <- lapply(forms, `[[`, "eta")
+
+  ## Cov(eta_k, eta_l), per observation
+  cv <- lapply(seq_len(K), function(k) lapply(seq_len(K), function(l)
+    rowSums((forms[[k]]$L %*% Vj$V[forms[[k]]$ii, forms[[l]]$ii, drop = FALSE]) *
+              forms[[l]]$L)))
+
+  qat <- function(e, pr) fam$qf(rep(pr, n),
+    stats::setNames(lapply(seq_len(K), function(k) linkinv[[k]](e[[k]])), pn),
+    object$fixed)
+
+  vapply(prob, function(pr) {
+    g <- lapply(seq_len(K), function(k) {
+      up <- dn <- etas
+      up[[k]] <- up[[k]] + h; dn[[k]] <- dn[[k]] - h
+      (qat(up, pr) - qat(dn, pr)) / (2 * h)
+    })
+    v <- numeric(n)
+    for (k in seq_len(K)) for (l in seq_len(K))
+      v <- v + g[[k]] * g[[l]] * cv[[k]][[l]]
+    sqrt(pmax(v, 0))
+  }, numeric(n))
 }
 
 #' @param object A `gamRTMB` fit.
 #' @param ... Ignored.
 #' @describeIn gamRTMB Coefficients, as a list of the fixed (`beta`) and
-#'   penalized (`b`) vectors plus the log variance components.
+#'   penalized (`b`) vectors plus the log variance components. `beta` and
+#'   `log_sigma` are named `parameter:term`.
 #' @export
 coef.gamRTMB <- function(object, ...) {
-  c(object$coefficients, list(log_sigma = object$log_sigma))
+  b <- object$coefficients$beta
+  names(b) <- .beta_labels(object$design)
+  ls <- object$log_sigma
+  names(ls) <- vapply(object$design$blocks, function(z)
+    paste0(z$par, ":", z$label), "")
+  list(beta = b, b = object$coefficients$b, log_sigma = ls)
 }
 
 #' @describeIn gamRTMB Fitted values of every distributional parameter, on the

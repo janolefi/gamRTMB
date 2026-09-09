@@ -23,7 +23,11 @@ LazyData: true
 URL: https://github.com/janolefi/gamRTMB
 BugReports: https://github.com/janolefi/gamRTMB/issues
 Suggests: 
-    testthat (>= 3.0.0)
+    testthat (>= 3.0.0),
+    knitr,
+    rmarkdown,
+    MASS
+VignetteBuilder: knitr
 Config/testthat/edition: 3
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
