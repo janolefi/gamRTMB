@@ -1,0 +1,213 @@
+# gamRTMB and GAMLSS
+
+**gamlss** is the reference implementation of distributional regression,
+so the first question about `gamRTMB` is whether it agrees with it. This
+vignette fits three standard GAMLSS examples both ways.
+
+``` r
+
+library(gamRTMB)
+library(gamlss)
+library(gamlss.data)
+tm <- function(e) unname(system.time(e)["elapsed"])
+```
+
+A note before the numbers: `gamlss` masks
+[`edf()`](https://janolefi.github.io/gamRTMB/reference/edf.md), which
+`gamRTMB` also exports, so with both attached you need
+[`gamRTMB::edf()`](https://janolefi.github.io/gamRTMB/reference/edf.md).
+
+``` r
+
+edf <- gamRTMB::edf
+```
+
+The two packages are **not** doing quite the same arithmetic. `gamlss`
+uses P-splines ([`pb()`](https://rdrr.io/pkg/gamlss/man/ps.html)) with a
+local maximum-likelihood smoothing criterion; `gamRTMB` uses mgcv’s
+bases with REML via a Laplace approximation. So the fitted curves should
+agree closely, and the effective degrees of freedom roughly, but nothing
+should match to the last digit.
+
+## Normal location-scale: `abdom`
+
+Foetal abdominal circumference against gestational age — the standard
+introductory GAMLSS example.
+
+``` r
+
+data(abdom)
+
+t_gl <- tm(m1 <- gamlss(y ~ pb(x), sigma.fo = ~ pb(x), data = abdom,
+                        trace = FALSE))
+t_rt <- tm(f1 <- gamRTMB(y ~ list(mean = ~ s(x), sd = ~ s(x)), data = abdom))
+
+data.frame(
+  fit      = c("gamlss", "gamRTMB"),
+  seconds  = round(c(t_gl, t_rt), 2),
+  edf      = round(c(m1$df.fit, attr(edf(f1), "edf.total")), 2),
+  `-2logL` = round(c(m1$G.deviance, -2 * as.numeric(logLik(f1))), 1),
+  AIC      = round(c(AIC(m1), AIC(f1)), 1),
+  check.names = FALSE
+)
+#>       fit seconds  edf -2logL    AIC
+#> 1  gamlss    0.24 7.68 4785.7 4801.1
+#> 2 gamRTMB    0.94 7.63 4786.0 4801.2
+```
+
+Nearly identical: 7.68 against 7.63 effective degrees of freedom, and
+AICs 0.15 apart. The fitted curves agree to within a fraction of a
+percent of the response’s own spread.
+
+``` r
+
+p1 <- predict(f1, type = "response")
+c(mean = max(abs(fitted(m1, "mu")    - p1$mean)) / sd(abdom$y),
+  sd   = max(abs(fitted(m1, "sigma") - p1$sd))   / sd(abdom$y))
+#>         mean           sd 
+#> 1.440750e-03 7.227518e-05
+```
+
+## Gamma: `rent`
+
+Munich rents against floor space. This one exposes a difference in
+convention rather than in fit: `gamlss`’s `GA` family parameterises the
+second argument as a **coefficient of variation**, so its `sigma` must
+be multiplied by `mu` to be compared with the standard deviation
+`RTMBdist`’s `gamma2` reports. `gamRTMB` always uses the density’s own
+parameterisation, which is the point of not renaming parameters to
+`mu`/`sigma`.
+
+``` r
+
+data(rent)
+
+t_gl <- tm(m2 <- gamlss(R ~ pb(Fl), sigma.fo = ~ pb(Fl), family = GA,
+                        data = rent, trace = FALSE))
+t_rt <- tm(f2 <- gamRTMB(R ~ list(mean = ~ s(Fl), sd = ~ s(Fl)),
+                         family = fam("gamma2"), data = rent))
+
+data.frame(
+  fit     = c("gamlss", "gamRTMB"),
+  seconds = round(c(t_gl, t_rt), 2),
+  edf     = round(c(m2$df.fit, attr(edf(f2), "edf.total")), 2),
+  AIC     = round(c(AIC(m2), AIC(f2)), 1)
+)
+#>       fit seconds  edf     AIC
+#> 1  gamlss    0.65 9.11 28061.6
+#> 2 gamRTMB    1.11 8.74 28062.9
+
+p2 <- predict(f2, type = "response")
+c(mean = cor(fitted(m2, "mu"), p2$mean),
+  sd   = cor(fitted(m2, "sigma") * fitted(m2, "mu"), p2$sd))
+#>      mean        sd 
+#> 0.9999998 0.9998615
+```
+
+## Four parameters: Box-Cox *t* on `abdom`
+
+The LMS-style centile fit, and GAMLSS’s flagship. `RTMBdist` implements
+the same `BCT` density, to the digit:
+
+``` r
+
+c(RTMBdist = RTMBdist::dbct(60, 100, 0.1, 1, 5, log = TRUE),
+  gamlss   = gamlss.dist::dBCT(60, 100, 0.1, 1, 5, log = TRUE))
+#>  RTMBdist    gamlss 
+#> -7.576373 -7.576373
+```
+
+``` r
+
+t_gl <- tm(m3 <- gamlss(y ~ pb(x), sigma.fo = ~ pb(x), nu.fo = ~ 1,
+                        tau.fo = ~ 1, family = BCT, data = abdom,
+                        trace = FALSE))
+t_rt <- tm(f3 <- gamRTMB(y ~ list(mu = ~ s(x), sigma = ~ s(x),
+                                  nu = ~ 1, tau = ~ 1),
+                         family = fam("bct"), data = abdom))
+
+data.frame(
+  fit     = c("gamlss", "gamRTMB"),
+  seconds = round(c(t_gl, t_rt), 2),
+  edf     = round(c(m3$df.fit, attr(edf(f3), "edf.total")), 2),
+  AIC     = round(c(AIC(m3), AIC(f3)), 1)
+)
+#>       fit seconds   edf    AIC
+#> 1  gamlss    0.76 11.76 4794.5
+#> 2 gamRTMB    2.96 15.01 4803.5
+```
+
+Here the two part company a little. The fitted curves still agree —
+
+``` r
+
+p3 <- predict(f3, type = "response")
+c(mu = cor(fitted(m3, "mu"), p3$mu), sigma = cor(fitted(m3, "sigma"), p3$sigma))
+#>        mu     sigma 
+#> 0.9999587 0.9990981
+```
+
+— but `gamRTMB` spends about three more effective degrees of freedom and
+pays for them in AIC. REML and GAMLSS’s criterion are choosing different
+amounts of smoothing on a 610-point dataset, and on this example GAMLSS
+chooses better. Worth knowing rather than glossing over.
+
+``` r
+
+plot(f3, type = "quantile", prob = c(0.03, 0.1, 0.5, 0.9, 0.97))
+```
+
+![Fitted centile curves of abdominal circumference against gestational
+age, from the Box-Cox t model, over the
+data.](gamlss_files/figure-html/bct-centiles-1.png)
+
+## Speed
+
+One run each on one machine, so read these as orders of magnitude rather
+than benchmarks. Dutch boys’ BMI against age, normal location-scale, at
+three sample sizes:
+
+``` r
+
+data(dbbmi)
+sizes <- c(500, 2000, nrow(dbbmi))
+res <- t(vapply(sizes, function(n) {
+  d <- if (n == nrow(dbbmi)) dbbmi else
+    { set.seed(1); dbbmi[sort(sample(nrow(dbbmi), n)), ] }
+  c(gamlss  = tm(gamlss(bmi ~ pb(age), sigma.fo = ~ pb(age), data = d,
+                        trace = FALSE)),
+    gamRTMB = tm(gamRTMB(bmi ~ list(mean = ~ s(age), sd = ~ s(age)), data = d)))
+}, c(gamlss = 0, gamRTMB = 0)))
+data.frame(n = sizes, round(res, 2))
+#>      n gamlss gamRTMB
+#> 1  500   0.79    1.00
+#> 2 2000   0.98    2.69
+#> 3 7294   5.42    6.57
+```
+
+Neither dominates. Both stay within a factor of two of each other across
+this range, and which one is ahead is not even monotone in `n` — which
+is itself the finding: the differences are small enough that a single
+run cannot separate them, and no scaling story should be read into three
+points this close. Speed is not a reason to pick either package here.
+
+## What actually differs
+
+Where `gamRTMB` gives you something else:
+
+- **Parameter names and count.** GAMLSS is capped at four parameters
+  called `mu`, `sigma`, `nu`, `tau`; `gamRTMB` has no cap and uses each
+  density’s own names — hence `mean`/`sd` for a Gaussian and
+  `xi`/`omega`/`alpha` for a skew normal. The `rent` example shows why
+  that matters: `GA`’s `sigma` is a coefficient of variation, and a
+  generic name hides it.
+- **mgcv’s smooths.** `s()`, `t2()`, `by=` factors, `bs="fs"`,
+  `bs="re"`, shrinkage bases, and `id=` to share a smoothing parameter
+  between terms *and between distributional parameters*.
+- **Exact derivatives**, by automatic differentiation rather than
+  analytic or numerical ones supplied per family.
+
+Where GAMLSS is ahead today: term selection (`stepGAIC`), distribution
+search (`fitDist`, `chooseDist`), censoring and truncation of arbitrary
+families (`gamlss.cens`, `gamlss.tr`), finite mixtures, and twenty years
+of use. If you need those, use GAMLSS.

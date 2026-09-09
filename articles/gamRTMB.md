@@ -192,10 +192,10 @@ fit_pe <- gamRTMB(accel ~ list(mu = ~ s(times, k = 20),
                   family = fam("powerexp2"), data = mcycle)
 c(nu = exp(coef(fit_pe)$beta[["nu:(Intercept)"]]))
 #>       nu 
-#> 2.823306
+#> 3.693093
 c(gaussian = AIC(fit), power_exponential = AIC(fit_pe))
 #>          gaussian power_exponential 
-#>          1110.299          1121.584
+#>          1110.299          1114.118
 ```
 
 `nu` comes out near 3.7 rather than 2, which points to slightly
@@ -363,3 +363,7 @@ documents the fitting options, including `weights`,
 [`offset()`](https://rdrr.io/r/stats/offset.html) terms inside a
 parameter’s formula, `na.action`, and `method = "ML"` as an alternative
 to the default REML.
+
+[`vignette("gamlss", package = "gamRTMB")`](https://janolefi.github.io/gamRTMB/articles/gamlss.md)
+fits three standard GAMLSS examples both ways, and compares the fits and
+the timings.

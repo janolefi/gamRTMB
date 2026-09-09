@@ -23,6 +23,10 @@ only those with a quantile function."></head><body>
     <div id="navbar" class="collapse navbar-collapse ms-3">
       <ul class="navbar-nav me-auto"><li class="nav-item"><a class="nav-link" href="../articles/gamRTMB.html">Get started</a></li>
 <li class="active nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
+<li class="nav-item dropdown">
+  <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/gamlss.html">gamRTMB and GAMLSS</a></li>
+  </ul></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
  <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="../search.json"></form></li>
 <li class="nav-item"><a class="external-link nav-link" href="https://github.com/janolefi/gamRTMB/" aria-label="GitHub"><span class="fa fab fa-github fa-lg"></span></a></li>
@@ -53,10 +57,11 @@ only those with a quantile function.</p>
 
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
-    <p>Each density is scaled to a common width rather than a common height. A
-common height would be more faithful — a concentrated distribution really
-does have a taller density — but on data where the spread changes by a
-factor of 40 it makes the wide ones invisible, and the shape is the point.</p>
+    <p>Each density opens to the left of its position line and is scaled to a
+common width rather than a common height. A common height would be more
+faithful — a concentrated distribution really does have a taller density —
+but on data where the spread changes by a factor of 40 it makes the wide
+ones invisible, and the shape is the point.</p>
     </div>
 
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

@@ -86,9 +86,10 @@ plot(
 
 ## Value
 
-Invisibly, a list of the plotted data: one data frame per term for
-`type = "terms"`, or the residual quantiles for the diagnostics, so any
-panel can be rebuilt by hand.
+Invisibly, the plotted data, so any panel can be rebuilt by hand: one
+data frame per term for `type = "terms"`, the residual quantiles for the
+diagnostics, the fitted quantiles for `type = "quantile"`, and a long
+data frame of `at`, `y` and `density` for `type = "density"`.
 
 ## Term plots (`type = "terms"`)
 

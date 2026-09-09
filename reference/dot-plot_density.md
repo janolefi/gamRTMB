@@ -13,8 +13,8 @@ family, not only those with a quantile function.
 
 ## Details
 
-Each density is scaled to a common width rather than a common height. A
-common height would be more faithful — a concentrated distribution
-really does have a taller density — but on data where the spread changes
-by a factor of 40 it makes the wide ones invisible, and the shape is the
-point.
+Each density opens to the left of its position line and is scaled to a
+common width rather than a common height. A common height would be more
+faithful — a concentrated distribution really does have a taller density
+— but on data where the spread changes by a factor of 40 it makes the
+wide ones invisible, and the shape is the point.

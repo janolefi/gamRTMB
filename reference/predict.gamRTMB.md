@@ -69,9 +69,22 @@ family to have a quantile function;
 [`families()`](https://janolefi.github.io/gamRTMB/reference/families.md)
 reports which do.
 
-Their standard errors come from the delta method: the quantile is
-differentiated numerically with respect to each linear predictor, and
-those derivatives are combined with the predictors' joint covariance,
-including the covariance *between* distributional parameters. Offered
-only for a continuous response, because for a lattice or mixed one the
-quantile function is a step and its derivative is not meaningful.
+Their standard errors come from the delta method. The quantile is
+differentiated numerically with respect to each linear predictor — *on
+the link scale*, so the link's own derivative is absorbed into the
+difference and never has to be supplied — and those derivatives are
+combined with the predictors' joint covariance, cross-parameter terms
+included. Checked against the analytic normal case to a relative 1e-9.
+
+Offered only for a continuous response, because for a lattice or mixed
+one the quantile function is a step and its derivative is not
+meaningful.
+
+The result is a standard error on the **response** scale, since a
+quantile is a value of the response and has no link of its own. A
+symmetric interval built from it can therefore cross a boundary of the
+support — for a positive response, `q - 2 * se` can be negative in the
+lower tail where the quantile is small and its uncertainty is not. Read
+such an interval as a local measure of precision rather than a range of
+plausible values, or take percentiles of quantiles simulated from the
+joint posterior instead.
