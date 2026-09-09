@@ -33,6 +33,7 @@ scale and shape models. \emph{Biometrics} 73(4), 1071--1081.
 Useful links:
 \itemize{
   \item \url{https://github.com/janolefi/gamRTMB}
+  \item \url{https://janolefi.github.io/gamRTMB/}
   \item Report bugs at \url{https://github.com/janolefi/gamRTMB/issues}
 }
 

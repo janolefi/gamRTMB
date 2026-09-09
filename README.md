@@ -77,7 +77,7 @@ quantiles rather than a mean and one standard error:
 plot(fit, type = "quantile")
 ```
 
-<img src="man/figures/README-quantiles-1.png" width="100%" />
+<img src="man/figures/README-quantiles-1.png" alt="Fitted 5th, 25th, 50th, 75th and 95th percentile curves of head acceleration against time, over the mcycle data. The curves are narrow before impact, fan out widely through it, then contract again." width="100%" />
 
 Term plots, a worm plot of randomised quantile residuals, and everything
 else are in `vignette("gamRTMB")`.

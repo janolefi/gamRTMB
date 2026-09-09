@@ -59,7 +59,7 @@ summary(fit)
 Once every parameter varies, the useful output is covariate-dependent
 quantiles rather than a mean and one standard error:
 
-```{r quantiles, fig.height = 4.6, fig.width = 7}
+```{r quantiles, fig.height = 4.6, fig.width = 7, fig.alt = "Fitted 5th, 25th, 50th, 75th and 95th percentile curves of head acceleration against time, over the mcycle data. The curves are narrow before impact, fan out widely through it, then contract again."}
 plot(fit, type = "quantile")
 ```
 

@@ -33,7 +33,7 @@ measurements of `accel` against `times`, in milliseconds after impact. It is
 the standard example of a mean that is hard to model, and it also has an
 obvious second feature.
 
-```{r data}
+```{r data, fig.alt = "Scatterplot of head acceleration against time for the mcycle data. Points lie flat and tightly clustered before about 15 ms, then swing sharply negative and scatter widely, before settling."}
 data(mcycle, package = "MASS")
 plot(accel ~ times, data = mcycle, pch = 20, col = "grey30", bty = "n",
      xlab = "time (ms)", ylab = "acceleration (g)")
@@ -74,7 +74,7 @@ freedom out of the 19 and 11 the bases allow. The smoothing parameters and
 EDFs come from a REML fit and agree with `mgcv` to three decimals on models
 both packages can express.
 
-```{r terms1, fig.height = 3.4}
+```{r terms1, fig.height = 3.4, fig.alt = "Two term plots with pointwise confidence bands: the smooth on the mean traces the crash waveform, and the smooth on the log standard deviation rises steeply through the impact."}
 par(mfrow = c(1, 2))
 plot(fit)
 ```
@@ -105,7 +105,7 @@ something you can look at: if the model is right they are standard normal. The
 worm plot is the detrended QQ plot, which makes it easier to see *where* a
 distribution is wrong.
 
-```{r resid, fig.height = 3.4}
+```{r resid, fig.height = 3.4, fig.alt = "Two worm plots. With a constant standard deviation a few lower-tail points stray outside the pointwise band; with a smooth standard deviation all points stay inside it."}
 par(mfrow = c(1, 2))
 set.seed(1)
 plot(fit0, type = "worm", main = "constant sd")
@@ -164,7 +164,7 @@ fit_t$convergence
 Once every parameter varies, the useful output is not a mean and a single
 standard error but covariate-dependent quantiles:
 
-```{r quantiles, fig.height = 4.4}
+```{r quantiles, fig.height = 4.4, fig.alt = "Fitted percentile curves of acceleration against time over the data, with a shaded band on the median curve. The curves contract and fan out as the fitted spread changes."}
 plot(fit, type = "quantile", prob = c(0.05, 0.25, 0.5, 0.75, 0.95))
 ```
 

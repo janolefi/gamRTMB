@@ -20,7 +20,7 @@ Description: Fits GAMLSS-style distributional regression models in which
 License: GPL-2 | GPL-3
 Encoding: UTF-8
 LazyData: true
-URL: https://github.com/janolefi/gamRTMB
+URL: https://github.com/janolefi/gamRTMB, https://janolefi.github.io/gamRTMB/
 BugReports: https://github.com/janolefi/gamRTMB/issues
 Suggests: 
     testthat (>= 3.0.0),
