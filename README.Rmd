@@ -52,7 +52,7 @@ library(gamRTMB)
 data(mcycle, package = "MASS")
 
 fit <- gamRTMB(accel ~ list(mean = ~ s(times, k = 20),
-                            sd   = ~ s(times, k = 12)),
+                            sd   = ~ s(times, k = 10)),
                data = mcycle)
 summary(fit)
 ```

@@ -44,7 +44,7 @@ library(gamRTMB)
 data(mcycle, package = "MASS")
 
 fit <- gamRTMB(accel ~ list(mean = ~ s(times, k = 20),
-                            sd   = ~ s(times, k = 12)),
+                            sd   = ~ s(times, k = 10)),
                data = mcycle)
 summary(fit)
 #> 
@@ -53,22 +53,22 @@ summary(fit)
 #> 
 #> Formula:
 #>   mean ~ s(times, k = 20)
-#>     sd ~ s(times, k = 12)
+#>     sd ~ s(times, k = 10)
 #> 
 #> Parametric coefficients:
 #>                   Estimate Std. Error z value Pr(>|z|)    
-#> mean:(Intercept) -25.20458    1.83426  -13.74   <2e-16 ***
-#> sd:(Intercept)     2.57458    0.06542   39.36   <2e-16 ***
+#> mean:(Intercept) -25.21806    1.85310  -13.61   <2e-16 ***
+#> sd:(Intercept)     2.58334    0.06443   40.10   <2e-16 ***
 #> ---
 #> Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 #> 
 #> Smooth terms:
 #>           term    edf  k        sp
-#>  mean:s(times) 14.433 19 2.869e-06
-#>  sd:s(times)    7.578 11  0.008295
+#>  mean:s(times) 14.382 19 2.893e-06
+#>  sd:s(times)    7.150  9  0.009119
 #> 
-#> Total EDF = 24.01   n = 133
-#> -REML = 587.065   logLik = -531.138   AIC = 1110.30
+#> Total EDF = 23.53   n = 133
+#> -REML = 587.275   logLik = -532.303   AIC = 1111.67
 ```
 
 Once every parameter varies, the useful output is covariate-dependent
