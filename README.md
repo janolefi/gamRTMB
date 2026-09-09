@@ -25,6 +25,8 @@ Restricted maximum likelihood is the default, effective degrees of
 freedom per smooth agree with mgcv, and smoothing parameters can be
 shared between terms *and* between distributional parameters.
 
+Most of the package was written by Claude Code.
+
 ## Installation
 
 ``` r
@@ -43,13 +45,10 @@ library(gamRTMB)
 set.seed(1)
 n <- 500
 d <- data.frame(x1 = runif(n), x2 = runif(n))
-d$y <- rnorm(n,
-             mean = sin(2 * pi * d$x1) + d$x2^2,
-             sd   = exp(-1 + 0.8 * cos(2 * pi * d$x1)))
+d$y <- rnorm(n, mean = sin(2 * pi * d$x1) + d$x2^2,
+             sd = exp(-1 + 0.8 * cos(2 * pi * d$x1)))
 
-fit <- gamRTMB(y ~ list(mean = ~ s(x1) + s(x2),
-                        sd   = ~ s(x1)),
-               data = d)
+fit <- gamRTMB(y ~ list(mean = ~ s(x1) + s(x2), sd = ~ s(x1)), data = d)
 fit
 #> gamRTMB fit
 #>   family:    norm (mean/identity, sd/log)
@@ -172,21 +171,22 @@ Ask for the joint precision matrix at fit time and `predict()` will
 return standard errors, per term or for the whole linear predictor:
 
 ``` r
-fitb <- gamRTMB(y ~ list(mean = ~ s(x1) + s(x2), sd = ~ s(x1)), data = d)
+# fitb <- gamRTMB(y ~ list(mean = ~ s(x1) + s(x2), sd = ~ s(x1)), data = d)
 
 g <- data.frame(x1 = seq(0, 1, length.out = 200), x2 = 0.5)
-tm <- predict(fitb, newdata = g, type = "terms", se.fit = TRUE)
+tm <- predict(fit, newdata = g, type = "terms", se.fit = TRUE)
 
 par(mar = c(4, 4, 1, 1))
 plot(g$x1, tm$mean$fit[, 1], type = "l", lwd = 2, ylim = c(-2, 2),
-     xlab = "x1", ylab = "s(x1)")
+     xlab = "x1", ylab = "s(x1)", bty = "n")
 polygon(c(g$x1, rev(g$x1)),
         c(tm$mean$fit[, 1] + 2 * tm$mean$se[, 1],
           rev(tm$mean$fit[, 1] - 2 * tm$mean$se[, 1])),
         col = adjustcolor("steelblue", 0.25), border = NA)
 lines(g$x1, sin(2 * pi * g$x1) - mean(sin(2 * pi * d$x1)),
-      col = 2, lty = 2, lwd = 2)
-legend("topright", c("fitted", "truth"), col = c(1, 2), lty = c(1, 2), bty = "n")
+      col = "firebrick", lty = 3, lwd = 2)
+legend("topright", c("fitted", "truth"), col = c(1, "firebrick"), 
+       lty = c(1, 3), bty = "n")
 ```
 
 <img src="man/figures/README-bands-1.png" width="100%" />
