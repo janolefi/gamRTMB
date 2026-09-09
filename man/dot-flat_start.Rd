@@ -4,7 +4,7 @@
 \alias{.flat_start}
 \title{Detect a distributional parameter that starts at a useless stationary point}
 \usage{
-.flat_start(grad, eval_at, pfull, is_beta, design, parnames)
+.flat_start(grad, eval_at, pfull, is_beta, design)
 }
 \arguments{
 \item{grad}{Joint gradient at the starting values.}
@@ -15,7 +15,7 @@
 
 \item{is_beta}{Logical index of the \code{beta} entries within \code{pfull}.}
 
-\item{design, parnames}{Design and parameter names.}
+\item{design}{The design object.}
 }
 \value{
 A message describing the affected parameters, or \code{NULL}.

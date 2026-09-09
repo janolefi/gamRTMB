@@ -25,17 +25,24 @@ parameters \code{s} as \verb{[[Qcc, Qcs], [Qsc, Qss]]}, the block needed is
 which is algebraically identical to inverting the whole thing but isolates
 the awkward part.
 
-That matters because a smoothing parameter driven to the boundary — a term
-shrunk onto its null space — leaves the criterion flat in its own
-\code{log_sigma}, so the joint precision is genuinely singular. The singularity
-sits entirely in \code{Qss}: with two boundary terms the offending eigenvalues
-were 3e-12 and 2e-07, loading on \code{log_sigma} with weight 1.00, while the
-coefficient block stayed invertible. A plain \code{solve()} of the full matrix
-fails there and takes the standard errors, bands and summary with it.
+Boundary smoothing parameters make this delicate in two separate ways, and
+both are handled here because a plain \code{solve()} of the whole matrix fails
+on either, taking the standard errors, bands and summary with it.
 
-Using a pseudo-inverse of \code{Qss} drops exactly those flat directions, which
-amounts to treating a boundary smoothing parameter as known rather than
-estimated — the conditional treatment, for that parameter only. Every
-non-degenerate smoothing parameter still contributes its correction.
+\strong{A flat smoothing parameter.} A term shrunk onto its null space
+leaves the criterion flat in its own \code{log_sigma}, so the joint precision is
+genuinely singular — but only in \code{Qss}: with two such terms the offending
+eigenvalues were 3e-12 and 2e-07, loading on \code{log_sigma} with weight 1.00,
+while the coefficient block stayed invertible. A pseudo-inverse of \code{Qss}
+drops exactly those directions, which amounts to treating a boundary
+smoothing parameter as known rather than estimated — the conditional
+treatment, for that parameter only. Every other one still contributes.
+
+\strong{Scaling.} The same boundary puts precision entries of order 1e19
+next to entries of order 1, and at that dynamic range double precision
+loses positive definiteness outright: a factor-smooth model measured an
+eigenvalue of -7.5e3 in a matrix whose largest was 2e19. So the matrix is
+first scaled to a unit diagonal, which leaves only the correlation
+structure to invert, and the result is unscaled afterwards.
 }
 \keyword{internal}

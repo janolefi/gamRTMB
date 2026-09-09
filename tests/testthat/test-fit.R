@@ -95,7 +95,8 @@ test_that("bad input is caught before fitting", {
 test_that("a non-finite gradient is diagnosed, not passed to the optimiser", {
   ## .flat_start must survive a gradient it cannot use
   expect_null(gamRTMB:::.flat_start(c(NA_real_, NaN), function(p) 0,
-                                    c(beta = 0), TRUE, list(), character(0)))
+                                    c(beta = 0), TRUE,
+                                    list(parnames = character(0))))
 
   ## RTMBdist's dtruncnorm has a finite value but a NaN derivative w.r.t. the
   ## scale when a bound is infinite. Whether that is still true upstream or

@@ -106,16 +106,16 @@
 #' @param eval_at Function of a full parameter vector returning the objective.
 #' @param pfull The full starting parameter vector.
 #' @param is_beta Logical index of the `beta` entries within `pfull`.
-#' @param design,parnames Design and parameter names.
+#' @param design The design object.
 #' @return A message describing the affected parameters, or `NULL`.
 #' @keywords internal
-.flat_start <- function(grad, eval_at, pfull, is_beta, design, parnames) {
+.flat_start <- function(grad, eval_at, pfull, is_beta, design) {
   if (!any(is.finite(grad))) return(NULL)
   tol <- 1e-8 * max(abs(grad[is.finite(grad)]), 1)
   f0 <- eval_at(pfull)
   gb <- grad[is_beta]
   flat <- character(0)
-  for (p in parnames) {
+  for (p in design$parnames) {
     ii <- design$beta_idx[[p]]
     k <- match("(Intercept)", attr(ii, "labels"))
     if (is.na(k) || !is.finite(gb[ii[k]]) || abs(gb[ii[k]]) >= tol) next
@@ -273,7 +273,7 @@ gamRTMB <- function(formula, family = fam("norm"), data, weights = NULL,
   g0 <- tryCatch(obj$env$f(pfull, order = 1), error = function(e) NULL)
   msg <- if (!is.null(g0))
     .flat_start(g0, function(p) obj$env$f(p, order = 0), pfull,
-                names(pfull) == "beta", design, design$parnames) else NULL
+                names(pfull) == "beta", design) else NULL
 
   ## A finite objective with a non-finite gradient is not a data problem: it
   ## means the density's derivative is broken at these parameter values, which

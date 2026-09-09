@@ -222,31 +222,31 @@
 
   ## pass 1 -- interpret every formula and flatten the smooth specifications,
   ## so that id groups can be found across distributional parameters
-  gps <- list(); specs <- list()
-  for (p in parnames) {
-    gps[[p]] <- mgcv::interpret.gam(par_formulas[[p]])
-    for (j in seq_along(gps[[p]]$smooth.spec))
-      specs[[length(specs) + 1L]] <- list(par = p, j = j,
-                                          spec = gps[[p]]$smooth.spec[[j]])
-  }
-  ids <- vapply(specs, function(z)
-    if (is.null(z$spec$id)) NA_character_ else as.character(z$spec$id), "")
+  gps <- lapply(par_formulas, mgcv::interpret.gam)
+  at <- do.call(rbind, lapply(parnames, function(p)
+    if (length(gps[[p]]$smooth.spec))
+      data.frame(par = p, j = seq_along(gps[[p]]$smooth.spec)) else NULL))
+  ids <- if (is.null(at)) character(0) else
+    vapply(seq_len(nrow(at)), function(i) {
+      idv <- gps[[at$par[i]]]$smooth.spec[[at$j[i]]]$id
+      if (is.null(idv)) NA_character_ else as.character(idv)
+    }, "")
 
   ## pass 2 -- within each id group, clone the basis specification and pool
   ## the covariate values
+  ## the cloned specs are written back where pass 3 will find them, so the
+  ## id can simply be read off the spec rather than tracked alongside it
   pooled <- list()
   for (idv in unique(ids[!is.na(ids)])) {
     grp <- which(ids == idv)
-    base <- specs[[grp[1L]]]$spec
-    if (length(grp) > 1L)
-      for (g in grp[-1L]) specs[[g]]$spec <- .clone_spec(base, specs[[g]]$spec)
+    base <- gps[[at$par[grp[1L]]]]$smooth.spec[[at$j[grp[1L]]]]
+    for (g in grp[-1L])
+      gps[[at$par[g]]]$smooth.spec[[at$j[g]]] <-
+        .clone_spec(base, gps[[at$par[g]]]$smooth.spec[[at$j[g]]])
     pooled[[idv]] <- lapply(seq_along(base$term), function(k)
       do.call(cbind, lapply(grp, function(g)
-        mgcv::get.var(specs[[g]]$spec$term[k], data, vecMat = FALSE))))
-  }
-  spec_of <- function(p, j) {
-    k <- which(vapply(specs, function(z) z$par == p && z$j == j, TRUE))
-    list(spec = specs[[k]]$spec, id = ids[k])
+        mgcv::get.var(gps[[at$par[g]]]$smooth.spec[[at$j[g]]]$term[k],
+                      data, vecMat = FALSE))))
   }
 
   ## pass 3 -- construct the smooths
@@ -262,13 +262,14 @@
 
     smooths <- list()
     for (j in seq_along(gp$smooth.spec)) {
-      sj <- spec_of(p, j)
-      scl <- if (is.na(sj$id))
-        mgcv::smoothCon(sj$spec, data = data, knots = knots,
+      spec <- gp$smooth.spec[[j]]
+      idv <- if (is.null(spec$id)) NA_character_ else as.character(spec$id)
+      scl <- if (is.na(idv))
+        mgcv::smoothCon(spec, data = data, knots = knots,
                         absorb.cons = TRUE, null.space.penalty = FALSE)
       else {
-        pd <- pooled[[sj$id]]; names(pd) <- sj$spec$term
-        mgcv::smoothCon(sj$spec, data = pd, knots = knots, absorb.cons = TRUE,
+        pd <- pooled[[idv]]; names(pd) <- spec$term
+        mgcv::smoothCon(spec, data = pd, knots = knots, absorb.cons = TRUE,
                         n = n, dataX = data, null.space.penalty = FALSE)
       }
       for (sm in scl) {
@@ -278,7 +279,7 @@
         re <- mgcv::smooth2random(sm, "", type = 2)
         smooths[[length(smooths) + 1L]] <- list(
           sm = sm, re = re, Tmap = .reconstruct_map(re),
-          label = sm$label, id = sj$id,
+          label = sm$label, id = idv,
           Xr = lapply(re$rand, as.matrix), Xf = re$Xf,
           plot1d = .plot_spec(sm, data))
       }

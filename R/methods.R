@@ -245,25 +245,29 @@ predict.gamRTMB <- function(object, newdata = NULL,
     nm <- vapply(P$smooths, `[[`, "", "label")
     tm <- matrix(0, nrow(Xpara), length(P$smooths), dimnames = list(NULL, nm))
     tse <- tm
-    Xs_all <- vector("list", length(P$smooths))
+    Z_all <- vector("list", length(P$smooths))
+    cols <- integer(0)
     for (j in seq_along(P$smooths)) {
       s <- P$smooths[[j]]
       Xs <- if (is.null(newdata)) s$sm$X else mgcv::PredictMat(s$sm, newdata)
-      Xs_all[[j]] <- Xs
-      tm[, j] <- as.vector(Xs %*% .smooth_beta(object, p, j))
+      sp <- .smooth_part(object, p, j, Xs)
+      Z_all[[j]] <- sp$Z
+      tm[, j] <- as.vector(sp$Z %*% sp$coef)
       eta <- eta + tm[, j]
       if (se.fit) {
-        Vb <- .smooth_vcov(object, p, j, Vj)
-        tse[, j] <- sqrt(pmax(rowSums((Xs %*% Vb) * Xs), 0))
+        ii <- c(Vj$ir[sp$b], Vj$ib[sp$f])
+        cols <- c(cols, ii)
+        tse[, j] <- .qform_se(sp$Z, Vj$V[ii, ii, drop = FALSE])
       }
     }
     out[[p]] <- if (type == "response")
       .links[[object$family$links[[p]]]]$linkinv(eta) else eta
     trm[[p]] <- list(fit = tm, se = if (se.fit) tse else NULL)
     if (se.fit) {
-      Xall <- do.call(cbind, c(list(Xpara), Xs_all))
-      V <- .eta_vcov(object, p, Vj)
-      se[[p]] <- sqrt(pmax(rowSums((Xall %*% V) * Xall), 0))
+      ## the whole predictor is the same linear form, stacked
+      L <- do.call(cbind, c(list(Xpara), Z_all))
+      ii <- c(Vj$ib[D$beta_idx[[p]][seq_len(npara)]], cols)
+      se[[p]] <- .qform_se(L, Vj$V[ii, ii, drop = FALSE])
     }
   }
   if (type == "terms") return(trm)

@@ -34,18 +34,6 @@
                       col = col, border = NA)
 }
 
-#' Set up a one-page grid, or ask between panels
-#' @keywords internal
-.panel_setup <- function(n, ask) {
-  if (ask) {
-    old <- grDevices::devAskNewPage(TRUE)
-    return(function() grDevices::devAskNewPage(old))
-  }
-  op <- graphics::par(no.readonly = TRUE)
-  graphics::par(mfrow = .panel_grid(n), mar = c(4, 4, 2, 1))
-  function() graphics::par(op)
-}
-
 #' Plot a gamRTMB fit
 #'
 #' @section Term plots (`type = "terms"`):
@@ -112,8 +100,8 @@ plot.gamRTMB <- function(x, type = c("terms", "qq", "worm"), select = NULL,
   type <- match.arg(type)
   switch(type,
     terms = .plot_terms(x, select, se, rug, band.col, ask, n, ...),
-    qq    = .plot_qq(x, nsim, ...),
-    worm  = .plot_worm(x, nsim, se, band.col, ...))
+    qq    = .plot_res(x, nsim, FALSE, se, band.col, ...),
+    worm  = .plot_res(x, nsim, TRUE,  se, band.col, ...))
 }
 
 #' @keywords internal
@@ -158,17 +146,25 @@ plot.gamRTMB <- function(x, type = c("terms", "qq", "worm"), select = NULL,
     nd <- stats::setNames(list(xg), ps$var)
     if (!is.null(ps$by)) nd[[ps$by]] <- rep(ps$by_val, ngrid)
     Xs <- mgcv::PredictMat(t$s$sm, as.data.frame(nd, stringsAsFactors = FALSE))
-    fit <- as.vector(Xs %*% .smooth_beta(x, t$par, t$j))
-    sef <- if (!is.null(Vj)) {
-      Vb <- .smooth_vcov(x, t$par, t$j, Vj)
-      sqrt(pmax(rowSums((Xs %*% Vb) * Xs), 0))
-    } else rep(NA_real_, ngrid)
-    data.frame(x = xg, fit = fit, se = sef)
+    sp <- .smooth_part(x, t$par, t$j, Xs)
+    sef <- if (is.null(Vj)) rep(NA_real_, ngrid) else {
+      ii <- c(Vj$ir[sp$b], Vj$ib[sp$f])
+      .qform_se(sp$Z, Vj$V[ii, ii, drop = FALSE])
+    }
+    data.frame(x = xg, fit = as.vector(sp$Z %*% sp$coef), se = sef)
   })
   names(curves) <- vapply(tl, `[[`, "", "label")
 
-  restore <- .panel_setup(length(tl), ask)
-  on.exit(restore(), add = TRUE)
+  ## one page by default; `ask` steps through instead. Either way the
+  ## caller's device settings are put back.
+  if (ask) {
+    old <- grDevices::devAskNewPage(TRUE)
+    on.exit(grDevices::devAskNewPage(old), add = TRUE)
+  } else {
+    op <- graphics::par(no.readonly = TRUE)
+    on.exit(graphics::par(op), add = TRUE)
+    graphics::par(mfrow = .panel_grid(length(tl)), mar = c(4, 4, 2, 1))
+  }
 
   dots <- list(...)
   col <- .or_else(dots$col, "black"); lwd <- .or_else(dots$lwd, 2)
@@ -191,54 +187,43 @@ plot.gamRTMB <- function(x, type = c("terms", "qq", "worm"), select = NULL,
   invisible(curves)
 }
 
+#' QQ and worm plots
+#'
+#' A worm plot is the detrended QQ plot, so both are the same picture with the
+#' theoretical quantile subtracted or not. The reference is the identity line
+#' rather than a fitted one, because these residuals should be standard
+#' normal and not merely normal.
+#'
 #' @keywords internal
-.plot_qq <- function(x, nsim, ...) {
-  R <- .res_draws(x, nsim)
-  th <- stats::qnorm(stats::ppoints(nrow(R)))
-  dots <- list(...)
-  pch <- .or_else(dots$pch, 20); cx <- .or_else(dots$cex, 0.5)
-  cols <- if (ncol(R) > 1L) .pal(ncol(R)) else .or_else(dots$col, "grey30")
-  dots$pch <- dots$cex <- dots$col <- NULL
-  .gcall(graphics::plot,
-         list(x = th, y = R[, 1], type = "n", bty = "n",
-              xlab = "theoretical quantile", ylab = "quantile residual",
-              main = "Normal QQ", ylim = range(R, finite = TRUE)), dots)
-  graphics::abline(0, 1, col = "grey60", lwd = 2)
-  for (k in seq_len(ncol(R)))
-    graphics::points(th, R[, k], pch = pch, cex = cx,
-                     col = if (length(cols) > 1L) cols[k] else cols)
-  invisible(data.frame(theoretical = th, R))
-}
-
-#' @keywords internal
-.plot_worm <- function(x, nsim, se, band.col, ...) {
-  R <- .res_draws(x, nsim)
+.plot_res <- function(x, nsim, detrend, se, band.col, ...) {
+  ## one column per randomisation draw; identical columns if continuous
+  R <- vapply(seq_len(max(1L, as.integer(nsim))),
+              function(i) sort(as.numeric(stats::residuals(x))),
+              numeric(x$design$n))
   nn <- nrow(R)
   p <- stats::ppoints(nn); th <- stats::qnorm(p)
-  dev <- R - th                                   # detrended
+  Y <- if (detrend) R - th else R
   ## pointwise 95% band for the deviation of a normal order statistic
-  sew <- sqrt(p * (1 - p) / nn) / stats::dnorm(th)
+  bw <- 1.96 * sqrt(p * (1 - p) / nn) / stats::dnorm(th)
+
   dots <- list(...)
   pch <- .or_else(dots$pch, 20); cx <- .or_else(dots$cex, 0.5)
   cols <- if (ncol(R) > 1L) .pal(ncol(R)) else .or_else(dots$col, "grey30")
   dots$pch <- dots$cex <- dots$col <- NULL
-  yl <- range(c(dev, if (se) c(-1.96 * sew, 1.96 * sew)), finite = TRUE)
+  yl <- range(c(Y, if (detrend && se) c(-bw, bw)), finite = TRUE)
   .gcall(graphics::plot,
-         list(x = th, y = dev[, 1], type = "n", bty = "n", ylim = yl,
-              xlab = "theoretical quantile", ylab = "deviation",
-              main = "Worm plot"), dots)
-  if (se) .band(th, -1.96 * sew, 1.96 * sew, band.col)
-  graphics::abline(h = 0, col = "grey60", lwd = 2)
+         list(x = th, y = Y[, 1], type = "n", bty = "n", ylim = yl,
+              xlab = "theoretical quantile",
+              ylab = if (detrend) "deviation" else "quantile residual",
+              main = if (detrend) "Worm plot" else "Normal QQ"), dots)
+  if (detrend && se) .band(th, -bw, bw, band.col)
+  if (detrend) graphics::abline(h = 0, col = "grey60", lwd = 2)
+  else graphics::abline(0, 1, col = "grey60", lwd = 2)
   for (k in seq_len(ncol(R)))
-    graphics::points(th, dev[, k], pch = pch, cex = cx,
+    graphics::points(th, Y[, k], pch = pch, cex = cx,
                      col = if (length(cols) > 1L) cols[k] else cols)
-  invisible(data.frame(theoretical = th, deviation = dev))
-}
-
-#' Sorted residuals, one column per randomisation draw
-#' @keywords internal
-.res_draws <- function(x, nsim) {
-  nsim <- max(1L, as.integer(nsim))
-  vapply(seq_len(nsim), function(i) sort(as.numeric(stats::residuals(x))),
-         numeric(x$design$n))
+  out <- data.frame(theoretical = th, Y)
+  nmY <- if (detrend) "deviation" else "residual"
+  names(out)[-1L] <- if (ncol(Y) == 1L) nmY else paste0(nmY, seq_len(ncol(Y)))
+  invisible(out)
 }

@@ -59,7 +59,7 @@ edf.gamRTMB <- function(object, ...) {
     stop("effective degrees of freedom need the coefficients in the random ",
          "vector, i.e. method = \"REML\" with engine = \"laplace\"")
   D <- object$design
-  dH <- diag(solve(as.matrix(ph$H)))
+  dH <- Matrix::diag(Matrix::solve(ph$H))
   ls <- object$log_sigma
 
   sj <- numeric(length(dH))                       # the diagonal penalty
@@ -111,18 +111,25 @@ edf.gamRTMB <- function(object, ...) {
 #' which is algebraically identical to inverting the whole thing but isolates
 #' the awkward part.
 #'
-#' That matters because a smoothing parameter driven to the boundary — a term
-#' shrunk onto its null space — leaves the criterion flat in its own
-#' `log_sigma`, so the joint precision is genuinely singular. The singularity
-#' sits entirely in `Qss`: with two boundary terms the offending eigenvalues
-#' were 3e-12 and 2e-07, loading on `log_sigma` with weight 1.00, while the
-#' coefficient block stayed invertible. A plain `solve()` of the full matrix
-#' fails there and takes the standard errors, bands and summary with it.
+#' Boundary smoothing parameters make this delicate in two separate ways, and
+#' both are handled here because a plain `solve()` of the whole matrix fails
+#' on either, taking the standard errors, bands and summary with it.
 #'
-#' Using a pseudo-inverse of `Qss` drops exactly those flat directions, which
-#' amounts to treating a boundary smoothing parameter as known rather than
-#' estimated — the conditional treatment, for that parameter only. Every
-#' non-degenerate smoothing parameter still contributes its correction.
+#' \strong{A flat smoothing parameter.} A term shrunk onto its null space
+#' leaves the criterion flat in its own `log_sigma`, so the joint precision is
+#' genuinely singular — but only in `Qss`: with two such terms the offending
+#' eigenvalues were 3e-12 and 2e-07, loading on `log_sigma` with weight 1.00,
+#' while the coefficient block stayed invertible. A pseudo-inverse of `Qss`
+#' drops exactly those directions, which amounts to treating a boundary
+#' smoothing parameter as known rather than estimated — the conditional
+#' treatment, for that parameter only. Every other one still contributes.
+#'
+#' \strong{Scaling.} The same boundary puts precision entries of order 1e19
+#' next to entries of order 1, and at that dynamic range double precision
+#' loses positive definiteness outright: a factor-smooth model measured an
+#' eigenvalue of -7.5e3 in a matrix whose largest was 2e19. So the matrix is
+#' first scaled to a unit diagonal, which leaves only the correlation
+#' structure to invert, and the result is unscaled afterwards.
 #'
 #' @param fit A `gamRTMB` fit.
 #' @return `list(V, ib, ir)`: the coefficient covariance, and the positions of
@@ -135,6 +142,11 @@ edf.gamRTMB <- function(object, ...) {
          "joint_precision = TRUE")
   Q <- as.matrix(jp)
   nm <- colnames(Q)
+  ## guard before the square root: at this dynamic range the diagonal itself
+  ## can come back negative
+  dg <- diag(Q); dg[!is.finite(dg) | dg <= 0] <- 1
+  sc <- sqrt(dg)
+  Q <- Q / outer(sc, sc)                          # unit diagonal
   ic <- which(nm %in% c("beta", "b"))
   is <- which(nm == "log_sigma")
   Sc <- Q[ic, ic, drop = FALSE]
@@ -144,55 +156,41 @@ edf.gamRTMB <- function(object, ...) {
     keep <- e$values > max(e$values, 0) * 1e-10
     if (any(keep)) {
       U <- e$vectors[, keep, drop = FALSE]
-      Qss_inv <- U %*% (t(U) / e$values[keep])
-      Sc <- Sc - Qcs %*% Qss_inv %*% t(Qcs)
+      Sc <- Sc - Qcs %*% (U %*% (t(U) / e$values[keep])) %*% t(Qcs)
     }
   }
   sub <- nm[ic]
-  list(V = solve(Sc), ib = which(sub == "beta"), ir = which(sub == "b"))
+  list(V = solve(Sc) / outer(sc[ic], sc[ic]),      # and unscaled again
+       ib = which(sub == "beta"), ir = which(sub == "b"))
 }
 
-#' Covariance of one smooth's coefficients, in its own basis
+#' One smooth's design in joint-coefficient space
 #'
-#' The same map that reconstructs the coefficients propagates their
-#' covariance: `Tmap %*% V %*% t(Tmap)`.
+#' A smooth's fitted values and their standard errors are both linear forms in
+#' the joint coefficient vector once its model matrix has been mapped through
+#' the reparameterisation: with `Z = X Tmap`, the contribution is `Z c` and its
+#' covariance `Z V Z'`. Mapping the design once is simpler than mapping the
+#' coefficients and their covariance separately, and it removes the need to
+#' assemble a block-diagonal transform for the whole linear predictor.
 #'
+#' @param fit A `gamRTMB` fit.
+#' @param p,j Distributional parameter and smooth index.
+#' @param X The smooth's model matrix, from the fit or from
+#'   [mgcv::PredictMat()].
+#' @return `list(Z, coef, b, f)`: the mapped design, the coefficients it
+#'   multiplies, and the `b` and `beta` indices for locating them in a
+#'   covariance matrix.
 #' @keywords internal
-.smooth_vcov <- function(fit, p, j, Vj) {
-  Tm <- fit$design$parts[[p]]$smooths[[j]]$Tmap
+.smooth_part <- function(fit, p, j, X) {
   idx <- .smooth_idx(fit$design, p, j)
-  ii <- c(Vj$ir[idx$b], Vj$ib[idx$f])
-  Tm %*% Vj$V[ii, ii, drop = FALSE] %*% t(Tm)
+  list(Z = X %*% fit$design$parts[[p]]$smooths[[j]]$Tmap,
+       coef = c(fit$coefficients$b[idx$b], fit$coefficients$beta[idx$f]),
+       b = idx$b, f = idx$f)
 }
 
-#' Covariance of a whole linear predictor's coefficients
-#'
-#' Ordered as `(parametric, smooth 1, smooth 2, ...)` in the original bases,
-#' matching how [predict.gamRTMB()] stacks the model matrices.
-#'
+#' Standard errors of a linear form in the coefficients
 #' @keywords internal
-.eta_vcov <- function(fit, p, Vj) {
-  D <- fit$design; P <- D$parts[[p]]
-  npara <- ncol(P$Xpara)
-  cols <- Vj$ib[D$beta_idx[[p]][seq_len(npara)]]
-  Tlist <- list(diag(1, npara))
-  for (j in seq_along(P$smooths)) {
-    idx <- .smooth_idx(D, p, j)
-    cols <- c(cols, Vj$ir[idx$b], Vj$ib[idx$f])
-    Tlist[[length(Tlist) + 1L]] <- P$smooths[[j]]$Tmap
-  }
-  Tb <- as.matrix(Matrix::bdiag(Tlist))
-  Tb %*% Vj$V[cols, cols, drop = FALSE] %*% t(Tb)
-}
-
-#' Coefficients of one smooth, in its own (constrained) basis
-#'
-#' @keywords internal
-.smooth_beta <- function(fit, p, j) {
-  idx <- .smooth_idx(fit$design, p, j)
-  cf <- c(fit$coefficients$b[idx$b], fit$coefficients$beta[idx$f])
-  as.vector(fit$design$parts[[p]]$smooths[[j]]$Tmap %*% cf)
-}
+.qform_se <- function(Z, V) sqrt(pmax(rowSums((Z %*% V) * Z), 0))
 
 #' Randomised quantile (pseudo) residuals
 #'
@@ -238,8 +236,7 @@ edf.gamRTMB <- function(object, ...) {
 #' @param ... Ignored.
 #' @return A numeric vector, or with `randomise = FALSE` and a non-continuous
 #'   response a data frame of `lower`, `upper` and `mid`. Values are clamped
-#'   away from 0 and 1 so that extreme observations stay finite and visible;
-#'   the number clamped is attached as attribute `"clamped"`.
+#'   away from 0 and 1 so that extreme observations stay finite and visible.
 #' @references
 #' Dunn, P. K. and Smyth, G. K. (1996) Randomized quantile residuals.
 #' \emph{Journal of Computational and Graphical Statistics} 5, 236--244.
@@ -267,53 +264,43 @@ residuals.gamRTMB <- function(object, type = c("quantile", "uniform"),
 
   lo <- switch(fam$support,
     continuous = hi,
+    ## integer arguments only, and 0 at the bottom of the support, so the CDF
+    ## is never asked for a value below it
     lattice = {
-      ## integer arguments only, and 0 at the bottom of the support: the CDF
-      ## is never asked for a value below it
-      l <- numeric(length(y))
-      pos <- y > 0
-      if (any(pos)) {
-        th <- lapply(theta, function(z) if (length(z) == 1L) z else z[pos])
-        fxp <- lapply(fx, function(z) if (length(z) == 1L) z else z[pos])
-        l[pos] <- fam$cdf(y[pos] - 1, th, fxp)
-      }
+      l <- numeric(length(y)); pos <- y > 0
+      if (any(pos))
+        l[pos] <- fam$cdf(y[pos] - 1, .at(theta, pos), .at(fx, pos))
       l
     },
+    ## at an atom the density returns its mass, not a density
     mixed = {
-      at <- y %in% fam$atoms
-      l <- hi
-      if (any(at)) l[at] <- hi[at] - exp(fam$logdens(y[at],
-        lapply(theta, function(z) if (length(z) == 1L) z else z[at]),
-        lapply(fx, function(z) if (length(z) == 1L) z else z[at])))
+      l <- hi; at <- y %in% fam$atoms
+      if (any(at))
+        l[at] <- hi[at] - exp(fam$logdens(y[at], .at(theta, at), .at(fx, at)))
       l
     })
-  lo <- pmin(pmax(lo, 0), 1); hi <- pmin(pmax(hi, 0), 1)
-  lo <- pmin(lo, hi)
+  hi <- pmin(pmax(hi, 0), 1)
+  lo <- pmin(pmax(lo, 0), hi)
 
-  if (fam$support == "continuous" || randomise) {
-    u <- if (fam$support == "continuous") hi
-         else stats::runif(length(y), lo, hi)
-    .pit_out(u, type)
-  } else {
-    out <- data.frame(lower = .pit_out(lo, type), upper = .pit_out(hi, type),
-                      mid = .pit_out((lo + hi) / 2, type))
-    attr(out, "clamped") <- NULL
-    out
-  }
+  if (fam$support == "continuous") return(.pit(hi, type))
+  if (randomise) return(.pit(stats::runif(length(y), lo, hi), type))
+  data.frame(lower = .pit(lo, type), upper = .pit(hi, type),
+             mid = .pit((lo + hi) / 2, type))
 }
+
+#' Subset the per-observation entries of a parameter list
+#' @keywords internal
+.at <- function(l, i) lapply(l, function(z) if (length(z) == 1L) z else z[i])
 
 #' Put PIT values on the requested scale, keeping them finite
 #'
 #' `qnorm()` at exactly 0 or 1 is infinite, which would drop the very
-#' observations a diagnostic most wants to show. Clamping instead keeps them
-#' finite and visibly extreme, and records how many were affected.
+#' observations a diagnostic most wants to show; clamping keeps them finite
+#' and visibly extreme instead.
 #'
 #' @keywords internal
-.pit_out <- function(u, type) {
+.pit <- function(u, type) {
   eps <- .Machine$double.eps
-  nclamp <- sum(u <= eps | u >= 1 - eps, na.rm = TRUE)
   u <- pmin(pmax(u, eps), 1 - eps)
-  out <- if (type == "uniform") u else stats::qnorm(u)
-  attr(out, "clamped") <- nclamp
-  out
+  if (type == "uniform") u else stats::qnorm(u)
 }

@@ -20,8 +20,7 @@ response. Ignored for a continuous one.}
 \value{
 A numeric vector, or with \code{randomise = FALSE} and a non-continuous
 response a data frame of \code{lower}, \code{upper} and \code{mid}. Values are clamped
-away from 0 and 1 so that extreme observations stay finite and visible;
-the number clamped is attached as attribute \code{"clamped"}.
+away from 0 and 1 so that extreme observations stay finite and visible.
 }
 \description{
 Residuals by the probability integral transform: if the fitted
