@@ -56,3 +56,21 @@ test_that("unsupported smooths are refused", {
   expect_error(gamRTMB:::.build_design(list(mu = ~ s(x, k = 5, fx = TRUE)), d, "mu"),
                "fx = TRUE")
 })
+
+test_that("overlapping null spaces are rejected with the remedy named", {
+  set.seed(2); n <- 400
+  d <- data.frame(x = runif(n), z = runif(n), w = runif(n),
+                  g = factor(sample(3, n, TRUE)))
+  d$y <- stats::rnorm(n, sin(2 * pi * d$x), 0.4)
+  ## a smooth's null space is a polynomial in its own covariate, so each of
+  ## these fits one main effect twice
+  for (fml in list(y ~ list(mean = ~ x + s(x, k = 8)),
+                   y ~ list(mean = ~ t2(x, z, k = 4) + s(z, k = 8)),
+                   y ~ list(mean = ~ g + s(x, k = 8) + s(x, by = g, k = 6))))
+    expect_error(gamRTMB(fml, data = d), "rank deficient")
+  ## the same models without the duplication are fine
+  expect_no_error(gamRTMB(y ~ list(mean = ~ s(x, k = 8)), data = d))
+  expect_no_error(gamRTMB(y ~ list(mean = ~ t2(x, z, k = 4) + s(w, k = 8)), data = d))
+  expect_no_error(gamRTMB(y ~ list(mean = ~ s(x, g, bs = "fs", k = 5)), data = d))
+  expect_no_error(gamRTMB(y ~ list(mean = ~ g + s(x, by = g, k = 6)), data = d))
+})

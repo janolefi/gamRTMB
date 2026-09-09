@@ -5,7 +5,14 @@
 \alias{print.gamRTMB_family}
 \title{Build a family object}
 \usage{
-fam(dist, links = NULL, fixed = NULL, start = NULL, eta_scale = NULL)
+fam(
+  dist,
+  links = NULL,
+  fixed = NULL,
+  support = NULL,
+  start = NULL,
+  eta_scale = NULL
+)
 
 \method{print}{gamRTMB_family}(x, ...)
 }
@@ -17,6 +24,11 @@ fam(dist, links = NULL, fixed = NULL, start = NULL, eta_scale = NULL)
 
 \item{fixed}{Named list of values for fixed arguments; each is a constant
 or the name of a column of the data.}
+
+\item{support}{Response support: \code{"continuous"}, \code{"lattice"} (integer) or
+\code{"mixed"} (continuous with atoms). Derived from \link{.lattice_families} and
+the presence of an inflation parameter; override it for a family those
+rules get wrong. Only \code{\link[=residuals.gamRTMB]{residuals.gamRTMB()}} uses it.}
 
 \item{start, eta_scale}{Optional replacements for the starting-value and
 linear-predictor-scale heuristics.}

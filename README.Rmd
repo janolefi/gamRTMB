@@ -172,29 +172,83 @@ fit3
 edf(fit3)
 ```
 
-## Confidence bands
+## Diagnostics
 
-Ask for the joint precision matrix at fit time and `predict()` will return
-standard errors, per term or for the whole linear predictor:
+`residuals()` gives randomised quantile (pseudo) residuals via the
+probability integral transform, so a QQ plot checks the whole distributional
+assumption and not just the mean. Where the response has atoms the residual is
+randomised within the step, using the family's declared support to get the
+left limit of the CDF — `F(y-1)` for a lattice response, `F(y) - p(y)` at an
+atom of a mixed one.
 
-```{r bands, fig.height = 3.2, fig.width = 5}
-# fitb <- gamRTMB(y ~ list(mean = ~ s(x1) + s(x2), sd = ~ s(x1)), data = d)
+```{r residuals, fig.height = 3.2, fig.width = 6.4}
+set.seed(6)
+n <- 1200
+z <- data.frame(x = runif(n))
+z$y <- ifelse(runif(n) < 0.35, 0, rpois(n, exp(1.5 + sin(2 * pi * z$x))))
 
-g <- data.frame(x1 = seq(0, 1, length.out = 200), x2 = 0.5)
-tm <- predict(fit, newdata = g, type = "terms", se.fit = TRUE)
+wrong <- gamRTMB(y ~ list(lambda = ~ s(x)), family = fam("pois"), data = z)
+right <- gamRTMB(y ~ list(lambda = ~ s(x), zeroprob = ~ 1),
+                 family = fam("zipois"), data = z)
 
+par(mfrow = c(1, 2))
+set.seed(1); plot(wrong, type = "worm", main = "fitted as pois")
+set.seed(1); plot(right, type = "worm", main = "fitted as zipois")
+```
+
+A worm plot is the detrended QQ plot, which makes it easier to see *where*
+the distribution is wrong; `type = "qq"` gives the plain version. Because
+residuals for a discrete response are randomised, `nsim` overlays several
+draws so the randomisation is visible rather than hidden.
+
+The zero-inflated data fitted as a plain Poisson bends away from the line;
+the same data with a `zeroprob` parameter does not. `families()` reports which
+families have a CDF, and so which support residuals.
+
+## Term plots
+
+`plot()` draws one panel per smooth: its contribution to that parameter's
+linear predictor, with a pointwise ±2 SE band. The band comes from the joint
+covariance, so it includes the uncertainty in the smoothing parameters
+(mgcv's `unconditional = TRUE`).
+
+```{r terms, fig.height = 5, fig.width = 7}
+plot(fit)
+```
+
+`select` picks one term out, by index or by a pattern matched against the
+`parameter: term` labels. Anything in `...` reaches the underlying `plot()`,
+and `bty = "n"` is a default you can override:
+
+```{r terms-one, fig.height = 3.4, fig.width = 5}
+plot(fit, select = "sd", col = "firebrick", lwd = 2,
+     main = "smooth on the log sd")
+```
+
+The plotted curves come back invisibly, so a panel can be rebuilt by hand —
+here against the truth used to simulate:
+
+```{r terms-grab, fig.keep = "none"}
+cv <- plot(fit, select = 1)[[1]]   # returns the curve; also draws it
+str(cv)
+```
+
+```{r terms-data, fig.height = 3.4, fig.width = 5}
 par(mar = c(4, 4, 1, 1))
-plot(g$x1, tm$mean$fit[, 1], type = "l", lwd = 2, ylim = c(-2, 2),
-     xlab = "x1", ylab = "s(x1)", bty = "n")
-polygon(c(g$x1, rev(g$x1)),
-        c(tm$mean$fit[, 1] + 2 * tm$mean$se[, 1],
-          rev(tm$mean$fit[, 1] - 2 * tm$mean$se[, 1])),
+plot(cv$x, cv$fit, type = "l", lwd = 2, ylim = c(-2, 2), bty = "n",
+     xlab = "x1", ylab = "s(x1)")
+polygon(c(cv$x, rev(cv$x)), c(cv$fit + 2 * cv$se, rev(cv$fit - 2 * cv$se)),
         col = adjustcolor("steelblue", 0.25), border = NA)
-lines(g$x1, sin(2 * pi * g$x1) - mean(sin(2 * pi * d$x1)),
+lines(cv$x, cv$fit, lwd = 2)
+lines(cv$x, sin(2 * pi * cv$x) - mean(sin(2 * pi * d$x1)),
       col = "firebrick", lty = 3, lwd = 2)
-legend("topright", c("fitted", "truth"), col = c(1, "firebrick"), 
+legend("topright", c("fitted", "truth"), col = c(1, "firebrick"),
        lty = c(1, 3), bty = "n")
 ```
+
+`predict(se.fit = TRUE)` gives the same standard errors numerically, per term
+or for the whole linear predictor, if you would rather build everything
+yourself.
 
 ## Status and scope
 

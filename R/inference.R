@@ -99,19 +99,57 @@ edf.gamRTMB <- function(object, ...) {
        f = if (length(s$f_local)) design$beta_idx[[p]][s$f_local] else integer(0))
 }
 
-#' Joint covariance of all coefficients
+#' Joint covariance of the coefficients
 #'
-#' From [RTMB::sdreport()]'s joint precision, which includes the uncertainty
-#' in the smoothing parameters. Requires `joint_precision = TRUE` at fit time.
+#' The `(beta, b)` block of the inverse joint precision, which includes the
+#' uncertainty in the smoothing parameters (mgcv's `unconditional = TRUE`).
 #'
+#' Computed as a Schur complement rather than by inverting the whole matrix.
+#' Writing the joint precision over coefficients `c` and log smoothing
+#' parameters `s` as `[[Qcc, Qcs], [Qsc, Qss]]`, the block needed is
+#' \deqn{[Q^{-1}]_{cc} = (Q_{cc} - Q_{cs} Q_{ss}^{-1} Q_{sc})^{-1},}
+#' which is algebraically identical to inverting the whole thing but isolates
+#' the awkward part.
+#'
+#' That matters because a smoothing parameter driven to the boundary — a term
+#' shrunk onto its null space — leaves the criterion flat in its own
+#' `log_sigma`, so the joint precision is genuinely singular. The singularity
+#' sits entirely in `Qss`: with two boundary terms the offending eigenvalues
+#' were 3e-12 and 2e-07, loading on `log_sigma` with weight 1.00, while the
+#' coefficient block stayed invertible. A plain `solve()` of the full matrix
+#' fails there and takes the standard errors, bands and summary with it.
+#'
+#' Using a pseudo-inverse of `Qss` drops exactly those flat directions, which
+#' amounts to treating a boundary smoothing parameter as known rather than
+#' estimated — the conditional treatment, for that parameter only. Every
+#' non-degenerate smoothing parameter still contributes its correction.
+#'
+#' @param fit A `gamRTMB` fit.
+#' @return `list(V, ib, ir)`: the coefficient covariance, and the positions of
+#'   the `beta` and `b` entries within it.
 #' @keywords internal
 .joint_cov <- function(fit) {
   jp <- fit$sdr$jointPrecision
   if (is.null(jp))
     stop("standard errors on smooth terms need a fit made with ",
          "joint_precision = TRUE")
-  nm <- colnames(jp)
-  list(V = solve(as.matrix(jp)), ib = which(nm == "beta"), ir = which(nm == "b"))
+  Q <- as.matrix(jp)
+  nm <- colnames(Q)
+  ic <- which(nm %in% c("beta", "b"))
+  is <- which(nm == "log_sigma")
+  Sc <- Q[ic, ic, drop = FALSE]
+  if (length(is)) {
+    Qcs <- Q[ic, is, drop = FALSE]
+    e <- eigen(Q[is, is, drop = FALSE], symmetric = TRUE)
+    keep <- e$values > max(e$values, 0) * 1e-10
+    if (any(keep)) {
+      U <- e$vectors[, keep, drop = FALSE]
+      Qss_inv <- U %*% (t(U) / e$values[keep])
+      Sc <- Sc - Qcs %*% Qss_inv %*% t(Qcs)
+    }
+  }
+  sub <- nm[ic]
+  list(V = solve(Sc), ib = which(sub == "beta"), ir = which(sub == "b"))
 }
 
 #' Covariance of one smooth's coefficients, in its own basis
@@ -154,4 +192,128 @@ edf.gamRTMB <- function(object, ...) {
   idx <- .smooth_idx(fit$design, p, j)
   cf <- c(fit$coefficients$b[idx$b], fit$coefficients$beta[idx$f])
   as.vector(fit$design$parts[[p]]$smooths[[j]]$Tmap %*% cf)
+}
+
+#' Randomised quantile (pseudo) residuals
+#'
+#' Residuals by the probability integral transform: if the fitted
+#' distribution is right, \eqn{u_i = F(y_i; \hat\theta_i)} is uniform and
+#' \eqn{r_i = \Phi^{-1}(u_i)} is standard normal, so a QQ plot of `r` checks
+#' the whole distributional assumption rather than just the mean.
+#'
+#' @section Discrete and mixed responses:
+#' Where the response has atoms, \eqn{F} is a step function and \eqn{u} cannot
+#' be uniform, so the residual is randomised within the step
+#' (Dunn & Smyth 1996):
+#' \deqn{u_i = F(y_i^-) + v_i (F(y_i) - F(y_i^-)), \quad v_i \sim U(0,1).}
+#' The left limit \eqn{F(y^-)} comes from the family's declared support, since
+#' it cannot be obtained reliably any other way:
+#' \describe{
+#'   \item{continuous}{\eqn{F(y^-) = F(y)} and no randomisation happens.}
+#'   \item{lattice}{\eqn{F(y^-) = F(y-1)}, evaluated at integer arguments
+#'     only, and taken as 0 at \eqn{y = 0} rather than evaluating the CDF
+#'     below its support.}
+#'   \item{mixed}{\eqn{F(y^-) = F(y) - p(y)} at an atom, where the density
+#'     returns the atom's mass, and \eqn{F(y)} elsewhere.}
+#' }
+#' Nudging the argument instead (\eqn{F(y-\delta)}) is not safe: CDF
+#' implementations disagree about whether they floor a non-integer argument,
+#' and some reject one outright.
+#'
+#' @section Randomisation:
+#' With `randomise = TRUE` (the default, and what you want for a QQ plot) the
+#' residuals are not a deterministic function of the fit; set a seed for
+#' reproducibility, or inspect several draws. With `randomise = FALSE` a
+#' discrete or mixed response returns the bounding interval per observation
+#' instead of a point.
+#'
+#' Prior weights are ignored: a residual belongs to a row of the data, not to
+#' the replicate count a weight stands for.
+#'
+#' @param object A `gamRTMB` fit.
+#' @param type `"quantile"` for normal-scale residuals (the default), or
+#'   `"uniform"` for the PIT values themselves.
+#' @param randomise Randomise within the step for a discrete or mixed
+#'   response. Ignored for a continuous one.
+#' @param ... Ignored.
+#' @return A numeric vector, or with `randomise = FALSE` and a non-continuous
+#'   response a data frame of `lower`, `upper` and `mid`. Values are clamped
+#'   away from 0 and 1 so that extreme observations stay finite and visible;
+#'   the number clamped is attached as attribute `"clamped"`.
+#' @references
+#' Dunn, P. K. and Smyth, G. K. (1996) Randomized quantile residuals.
+#' \emph{Journal of Computational and Graphical Statistics} 5, 236--244.
+#' @examples
+#' set.seed(1)
+#' d <- data.frame(x = runif(300))
+#' d$y <- rpois(300, exp(1 + sin(2 * pi * d$x)))
+#' fit <- gamRTMB(y ~ list(lambda = ~ s(x, k = 8)), family = fam("pois"),
+#'                data = d)
+#' r <- residuals(fit)
+#' qqnorm(r); qqline(r)
+#' @export
+residuals.gamRTMB <- function(object, type = c("quantile", "uniform"),
+                              randomise = TRUE, ...) {
+  type <- match.arg(type)
+  fam <- object$family
+  if (is.null(fam$cdf))
+    stop("family '", fam$family, "' has no CDF in ", fam$source,
+         ", so quantile residuals are not available. families() reports which ",
+         "families support them.")
+  y <- object$y
+  theta <- stats::predict(object, type = "response")
+  fx <- object$fixed
+  hi <- fam$cdf(y, theta, fx)
+
+  lo <- switch(fam$support,
+    continuous = hi,
+    lattice = {
+      ## integer arguments only, and 0 at the bottom of the support: the CDF
+      ## is never asked for a value below it
+      l <- numeric(length(y))
+      pos <- y > 0
+      if (any(pos)) {
+        th <- lapply(theta, function(z) if (length(z) == 1L) z else z[pos])
+        fxp <- lapply(fx, function(z) if (length(z) == 1L) z else z[pos])
+        l[pos] <- fam$cdf(y[pos] - 1, th, fxp)
+      }
+      l
+    },
+    mixed = {
+      at <- y %in% fam$atoms
+      l <- hi
+      if (any(at)) l[at] <- hi[at] - exp(fam$logdens(y[at],
+        lapply(theta, function(z) if (length(z) == 1L) z else z[at]),
+        lapply(fx, function(z) if (length(z) == 1L) z else z[at])))
+      l
+    })
+  lo <- pmin(pmax(lo, 0), 1); hi <- pmin(pmax(hi, 0), 1)
+  lo <- pmin(lo, hi)
+
+  if (fam$support == "continuous" || randomise) {
+    u <- if (fam$support == "continuous") hi
+         else stats::runif(length(y), lo, hi)
+    .pit_out(u, type)
+  } else {
+    out <- data.frame(lower = .pit_out(lo, type), upper = .pit_out(hi, type),
+                      mid = .pit_out((lo + hi) / 2, type))
+    attr(out, "clamped") <- NULL
+    out
+  }
+}
+
+#' Put PIT values on the requested scale, keeping them finite
+#'
+#' `qnorm()` at exactly 0 or 1 is infinite, which would drop the very
+#' observations a diagnostic most wants to show. Clamping instead keeps them
+#' finite and visibly extreme, and records how many were affected.
+#'
+#' @keywords internal
+.pit_out <- function(u, type) {
+  eps <- .Machine$double.eps
+  nclamp <- sum(u <= eps | u >= 1 - eps, na.rm = TRUE)
+  u <- pmin(pmax(u, eps), 1 - eps)
+  out <- if (type == "uniform") u else stats::qnorm(u)
+  attr(out, "clamped") <- nclamp
+  out
 }

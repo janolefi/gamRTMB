@@ -2,12 +2,40 @@
 % Please edit documentation in R/inference.R
 \name{.joint_cov}
 \alias{.joint_cov}
-\title{Joint covariance of all coefficients}
+\title{Joint covariance of the coefficients}
 \usage{
 .joint_cov(fit)
 }
+\arguments{
+\item{fit}{A \code{gamRTMB} fit.}
+}
+\value{
+\code{list(V, ib, ir)}: the coefficient covariance, and the positions of
+the \code{beta} and \code{b} entries within it.
+}
 \description{
-From \code{\link[RTMB:TMB-interface]{RTMB::sdreport()}}'s joint precision, which includes the uncertainty
-in the smoothing parameters. Requires \code{joint_precision = TRUE} at fit time.
+The \verb{(beta, b)} block of the inverse joint precision, which includes the
+uncertainty in the smoothing parameters (mgcv's \code{unconditional = TRUE}).
+}
+\details{
+Computed as a Schur complement rather than by inverting the whole matrix.
+Writing the joint precision over coefficients \code{c} and log smoothing
+parameters \code{s} as \verb{[[Qcc, Qcs], [Qsc, Qss]]}, the block needed is
+\deqn{[Q^{-1}]_{cc} = (Q_{cc} - Q_{cs} Q_{ss}^{-1} Q_{sc})^{-1},}
+which is algebraically identical to inverting the whole thing but isolates
+the awkward part.
+
+That matters because a smoothing parameter driven to the boundary — a term
+shrunk onto its null space — leaves the criterion flat in its own
+\code{log_sigma}, so the joint precision is genuinely singular. The singularity
+sits entirely in \code{Qss}: with two boundary terms the offending eigenvalues
+were 3e-12 and 2e-07, loading on \code{log_sigma} with weight 1.00, while the
+coefficient block stayed invertible. A plain \code{solve()} of the full matrix
+fails there and takes the standard errors, bands and summary with it.
+
+Using a pseudo-inverse of \code{Qss} drops exactly those flat directions, which
+amounts to treating a boundary smoothing parameter as known rather than
+estimated — the conditional treatment, for that parameter only. Every
+non-degenerate smoothing parameter still contributes its correction.
 }
 \keyword{internal}

@@ -12,7 +12,9 @@ families(pattern = NULL)
 \value{
 A data frame with one row per family: its name, the modelled
 parameters with their links, any fixed arguments that must be supplied
-from the data, and which package the density comes from.
+from the data, the response support, whether quantile residuals are
+available (i.e. whether a CDF exists), and which package the density
+comes from.
 }
 \description{
 Every density \code{\link[=fam]{fam()}} can turn into a family: all of \pkg{RTMBdist} that is

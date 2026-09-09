@@ -108,6 +108,26 @@
 .rtmb_families <- c("norm", "pois", "binom", "gamma", "exp", "lnorm",
                     "weibull", "cauchy", "logis", "t", "chisq")
 
+#' Lattice (integer-supported) families
+#'
+#' Whether a response is discrete cannot be read off a density: the argument
+#' names say nothing about it, and probing the CDF numerically is unreliable
+#' because implementations differ in whether they floor a non-integer
+#' argument. So it is declared, as in \pkg{LaMa}'s `pseudo_res()`, and
+#' [fam()] takes a `support` override for anything not listed.
+#'
+#' Every family here is supported on the non-negative integers, which is what
+#' lets [residuals.gamRTMB()] take `F(y - 1) = 0` at `y = 0` rather than
+#' evaluating the CDF below its support.
+#'
+#' @keywords internal
+.lattice_families <- c(
+  "pois", "binom", "geom", "geom.ad", "nbinom", "nbinom2", "betabinom",
+  "genpois", "bell", "bell2", "combinom",
+  "zipois", "zibinom", "zinbinom", "zinbinom2", "zigeom", "zibetabinom",
+  "hpois", "hbinom", "hgeom", "hnbinom", "hnbinom2", "hbetabinom",
+  "ztpois", "ztbinom", "ztnbinom", "ztnbinom2", "ztgeom", "ztbetabinom")
+
 .link_neutral <- c(identity = 0, log = 0, logit = -2.2)
 
 ## Magnitude for shape parameters that must not start at zero; see the
@@ -132,10 +152,11 @@
   ## prefixed one and stripped to nonsense.
   for (src in c("RTMBdist", "RTMB")) {
     ns <- asNamespace(src)
+    pub <- getNamespaceExports(src)          # internal helpers are not families
     for (cand in unique(c(nm, paste0("d", nm)))) {
       if (!startsWith(cand, "d")) next
       if (src == "RTMB" && !sub("^d", "", cand) %in% .rtmb_families) next
-      if (!exists(cand, ns, inherits = FALSE)) next
+      if (!cand %in% pub || !exists(cand, ns, inherits = FALSE)) next
       f <- get(cand, envir = ns)
       if (is.function(f) && all(c("x", "log") %in% names(formals(f))))
         return(list(dfun = f, name = cand, dist = sub("^d", "", cand),
@@ -143,6 +164,38 @@
     }
   }
   NULL
+}
+
+#' Locate the CDF matching a density
+#'
+#' `p<dist>` in the density's own namespace, else in \pkg{stats}. Residuals
+#' are computed after fitting, on plain numerics, so the CDF never has to be
+#' AD-compatible.
+#'
+#' A few RTMBdist CDFs take extra arguments the density does not (`ncp`,
+#' `method`, `from`, `tol`), which is harmless. The case that matters is the
+#' reverse: if a modelled parameter is missing from the CDF's arguments it
+#' cannot be evaluated faithfully, so no CDF is offered rather than one with a
+#' parameter silently dropped.
+#'
+#' @keywords internal
+.find_cdf <- function(dist, source, modelled) {
+  pn <- paste0("p", dist)
+  pf <- NULL
+  for (ns in c(source, "stats"))
+    if (exists(pn, asNamespace(ns), inherits = FALSE)) {
+      cand <- get(pn, envir = asNamespace(ns))
+      if (is.function(cand)) { pf <- cand; break }
+    }
+  if (is.null(pf)) return(NULL)
+  pargs <- names(formals(pf))
+  if (!all(modelled %in% pargs)) return(NULL)
+  qname <- pargs[1L]
+  function(y, theta, fx = list()) {
+    args <- c(list(y), theta[modelled], fx[intersect(names(fx), pargs)])
+    names(args)[1L] <- qname
+    do.call(pf, args)
+  }
 }
 
 #' Derive a family's structure from its density
@@ -219,9 +272,22 @@
                                                   else lk[[nm]]]] else z
   }, numeric(1))
 
+  ## Support type, which residuals need. A lattice family handles any atoms
+  ## through the F(y-1) interval; a continuous family with an inflation
+  ## parameter has atoms at 0 and/or 1 sitting on a continuous base, where the
+  ## density evaluates to the atom's mass rather than to a density.
+  args_all <- c(modelled, names(vals))
+  support <- if (d$dist %in% .lattice_families) "lattice"
+             else if (any(c("zeroprob", "oneprob") %in% args_all)) "mixed"
+             else "continuous"
+  atoms <- if (support == "mixed")
+    c(if ("zeroprob" %in% args_all) 0, if ("oneprob" %in% args_all) 1)
+    else numeric(0)
+
   list(dfun = d$dfun, name = d$name, dist = d$dist, source = d$source,
        modelled = modelled, links = lk, derived = derived,
-       fixed = vals, needs = needs, def_start = def_start)
+       fixed = vals, needs = needs, def_start = def_start,
+       support = support, atoms = atoms)
 }
 
 #' Build a family object
@@ -267,6 +333,10 @@
 #' @param links Named character vector overriding the derived links.
 #' @param fixed Named list of values for fixed arguments; each is a constant
 #'   or the name of a column of the data.
+#' @param support Response support: `"continuous"`, `"lattice"` (integer) or
+#'   `"mixed"` (continuous with atoms). Derived from [.lattice_families] and
+#'   the presence of an inflation parameter; override it for a family those
+#'   rules get wrong. Only [residuals.gamRTMB()] uses it.
 #' @param start,eta_scale Optional replacements for the starting-value and
 #'   linear-predictor-scale heuristics.
 #' @return An object of class `gamRTMB_family`.
@@ -277,8 +347,8 @@
 #' fam("skewnorm2")
 #' fam("betabinom", fixed = list(size = "trials"))
 #' @export
-fam <- function(dist, links = NULL, fixed = NULL, start = NULL,
-                eta_scale = NULL) {
+fam <- function(dist, links = NULL, fixed = NULL, support = NULL,
+                start = NULL, eta_scale = NULL) {
   sp <- .classify(dist, fixed)
   if (is.null(sp))
     stop("no density for '", as.character(dist)[1L],
@@ -347,8 +417,16 @@ fam <- function(dist, links = NULL, fixed = NULL, start = NULL,
         max(stats::sd(y), 1e-3) else 0.5, numeric(1)), modelled)
   }
 
+  if (!is.null(support)) {
+    support <- match.arg(support, c("continuous", "lattice", "mixed"))
+    sp$support <- support
+    if (support != "mixed") sp$atoms <- numeric(0)
+  }
+
   structure(list(family = sp$dist, dist = sp$name, source = sp$source,
                  parnames = modelled,
+                 support = sp$support, atoms = sp$atoms,
+                 cdf = .find_cdf(sp$dist, sp$source, modelled),
                  links = stats::setNames(as.character(lk), modelled),
                  fixed = sp$fixed, derived = sp$derived,
                  logdens = logdens, start = start_fun, eta_scale = scale_fun),
@@ -363,15 +441,20 @@ fam <- function(dist, links = NULL, fixed = NULL, start = NULL,
 #' @param pattern Optional regular expression to filter family names.
 #' @return A data frame with one row per family: its name, the modelled
 #'   parameters with their links, any fixed arguments that must be supplied
-#'   from the data, and which package the density comes from.
+#'   from the data, the response support, whether quantile residuals are
+#'   available (i.e. whether a CDF exists), and which package the density
+#'   comes from.
 #' @seealso [fam()]
 #' @examples
 #' head(families(), 10)
 #' families("beta")
 #' @export
 families <- function(pattern = NULL) {
+  ## exported densities only: the namespace also holds internal helpers whose
+  ## names begin with d (an OSA-residual variant, for one) that are not
+  ## regression families
   cand <- unique(c(
-    grep("^d", ls(asNamespace("RTMBdist")), value = TRUE),
+    grep("^d", getNamespaceExports("RTMBdist"), value = TRUE),
     paste0("d", .rtmb_families)))
   rows <- lapply(cand, function(nm) {
     sp <- tryCatch(.classify(nm), error = function(e) NULL)
@@ -381,6 +464,8 @@ families <- function(pattern = NULL) {
                parameters = paste(sprintf("%s/%s", sp$modelled, sp$links),
                                   collapse = ", "),
                needs = paste(sp$needs, collapse = ", "),
+               support = sp$support,
+               residuals = !is.null(.find_cdf(sp$dist, sp$source, sp$modelled)),
                source = sp$source, row.names = NULL)
   })
   out <- do.call(rbind, rows)
@@ -403,6 +488,9 @@ print.gamRTMB_family <- function(x, ...) {
   if (length(x$derived))
     cat("  derived:  ", paste(x$derived, collapse = ", "),
         " (computed by the density)\n", sep = "")
+  cat("  support:  ", x$support,
+      if (length(x$atoms)) paste0(" (atoms at ", paste(x$atoms, collapse = ", "), ")") else "",
+      if (is.null(x$cdf)) "; no CDF, so no residuals" else "", "\n", sep = "")
   invisible(x)
 }
 

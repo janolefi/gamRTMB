@@ -130,17 +130,26 @@ AD-aware:
 
 ``` r
 nrow(families())
-#> [1] 87
+#> [1] 85
 families("gamma|^norm$|zipois")
-#>     family                           parameters needs   source
-#> 1    gamma                  shape/log, rate/log           RTMB
-#> 2   gamma2                     mean/log, sd/log       RTMBdist
-#> 3 gengamma       mu/log, sigma/log, nu/identity       RTMBdist
-#> 4 invgamma                  shape/log, rate/log       RTMBdist
-#> 5     norm                mean/identity, sd/log           RTMB
-#> 6  zigamma shape/log, scale/log, zeroprob/logit       RTMBdist
-#> 7 zigamma2     mean/log, sd/log, zeroprob/logit       RTMBdist
-#> 8   zipois           lambda/log, zeroprob/logit       RTMBdist
+#>     family                           parameters needs    support residuals
+#> 1    gamma                  shape/log, rate/log       continuous      TRUE
+#> 2   gamma2                     mean/log, sd/log       continuous      TRUE
+#> 3 gengamma       mu/log, sigma/log, nu/identity       continuous      TRUE
+#> 4 invgamma                  shape/log, rate/log       continuous      TRUE
+#> 5     norm                mean/identity, sd/log       continuous      TRUE
+#> 6  zigamma shape/log, scale/log, zeroprob/logit            mixed      TRUE
+#> 7 zigamma2     mean/log, sd/log, zeroprob/logit            mixed      TRUE
+#> 8   zipois           lambda/log, zeroprob/logit          lattice      TRUE
+#>     source
+#> 1     RTMB
+#> 2 RTMBdist
+#> 3 RTMBdist
+#> 4 RTMBdist
+#> 5     RTMB
+#> 6 RTMBdist
+#> 7 RTMBdist
+#> 8 RTMBdist
 ```
 
 Parameter names are always the density’s own, which is why a Gaussian is
@@ -152,6 +161,7 @@ f <- fam("skewnorm2")
 f
 #> gamRTMB family: skewnorm2  [dskewnorm2, RTMBdist]
 #>   modelled: mean (identity), sd (log), alpha (identity)
+#>   support:  continuous
 
 set.seed(2)
 n <- 1500
@@ -179,6 +189,7 @@ fam("betabinom", fixed = list(size = "trials"))
 #> gamRTMB family: betabinom  [dbetabinom, RTMBdist]
 #>   modelled: shape1 (log), shape2 (log)
 #>   fixed:    size
+#>   support:  lattice; no CDF, so no residuals
 ```
 
 ### Weights, offsets and missing data
@@ -233,31 +244,96 @@ edf(fit3)
 #> 2        sd s(x1) 5.964221 9 0.1523 sh
 ```
 
-## Confidence bands
+## Diagnostics
 
-Ask for the joint precision matrix at fit time and `predict()` will
-return standard errors, per term or for the whole linear predictor:
+`residuals()` gives randomised quantile (pseudo) residuals via the
+probability integral transform, so a QQ plot checks the whole
+distributional assumption and not just the mean. Where the response has
+atoms the residual is randomised within the step, using the family’s
+declared support to get the left limit of the CDF — `F(y-1)` for a
+lattice response, `F(y) - p(y)` at an atom of a mixed one.
 
 ``` r
-# fitb <- gamRTMB(y ~ list(mean = ~ s(x1) + s(x2), sd = ~ s(x1)), data = d)
+set.seed(6)
+n <- 1200
+z <- data.frame(x = runif(n))
+z$y <- ifelse(runif(n) < 0.35, 0, rpois(n, exp(1.5 + sin(2 * pi * z$x))))
 
-g <- data.frame(x1 = seq(0, 1, length.out = 200), x2 = 0.5)
-tm <- predict(fit, newdata = g, type = "terms", se.fit = TRUE)
+wrong <- gamRTMB(y ~ list(lambda = ~ s(x)), family = fam("pois"), data = z)
+right <- gamRTMB(y ~ list(lambda = ~ s(x), zeroprob = ~ 1),
+                 family = fam("zipois"), data = z)
 
+par(mfrow = c(1, 2))
+set.seed(1); plot(wrong, type = "worm", main = "fitted as pois")
+set.seed(1); plot(right, type = "worm", main = "fitted as zipois")
+```
+
+<img src="man/figures/README-residuals-1.png" width="100%" />
+
+A worm plot is the detrended QQ plot, which makes it easier to see
+*where* the distribution is wrong; `type = "qq"` gives the plain
+version. Because residuals for a discrete response are randomised,
+`nsim` overlays several draws so the randomisation is visible rather
+than hidden.
+
+The zero-inflated data fitted as a plain Poisson bends away from the
+line; the same data with a `zeroprob` parameter does not. `families()`
+reports which families have a CDF, and so which support residuals.
+
+## Term plots
+
+`plot()` draws one panel per smooth: its contribution to that
+parameter’s linear predictor, with a pointwise ±2 SE band. The band
+comes from the joint covariance, so it includes the uncertainty in the
+smoothing parameters (mgcv’s `unconditional = TRUE`).
+
+``` r
+plot(fit)
+```
+
+<img src="man/figures/README-terms-1.png" width="100%" />
+
+`select` picks one term out, by index or by a pattern matched against
+the `parameter: term` labels. Anything in `...` reaches the underlying
+`plot()`, and `bty = "n"` is a default you can override:
+
+``` r
+plot(fit, select = "sd", col = "firebrick", lwd = 2,
+     main = "smooth on the log sd")
+```
+
+<img src="man/figures/README-terms-one-1.png" width="100%" />
+
+The plotted curves come back invisibly, so a panel can be rebuilt by
+hand — here against the truth used to simulate:
+
+``` r
+cv <- plot(fit, select = 1)[[1]]   # returns the curve; also draws it
+str(cv)
+#> 'data.frame':    200 obs. of  3 variables:
+#>  $ x  : num  0.00184 0.00683 0.01183 0.01683 0.02182 ...
+#>  $ fit: num  -0.322 -0.286 -0.251 -0.215 -0.18 ...
+#>  $ se : num  0.216 0.205 0.194 0.184 0.173 ...
+```
+
+``` r
 par(mar = c(4, 4, 1, 1))
-plot(g$x1, tm$mean$fit[, 1], type = "l", lwd = 2, ylim = c(-2, 2),
-     xlab = "x1", ylab = "s(x1)", bty = "n")
-polygon(c(g$x1, rev(g$x1)),
-        c(tm$mean$fit[, 1] + 2 * tm$mean$se[, 1],
-          rev(tm$mean$fit[, 1] - 2 * tm$mean$se[, 1])),
+plot(cv$x, cv$fit, type = "l", lwd = 2, ylim = c(-2, 2), bty = "n",
+     xlab = "x1", ylab = "s(x1)")
+polygon(c(cv$x, rev(cv$x)), c(cv$fit + 2 * cv$se, rev(cv$fit - 2 * cv$se)),
         col = adjustcolor("steelblue", 0.25), border = NA)
-lines(g$x1, sin(2 * pi * g$x1) - mean(sin(2 * pi * d$x1)),
+lines(cv$x, cv$fit, lwd = 2)
+lines(cv$x, sin(2 * pi * cv$x) - mean(sin(2 * pi * d$x1)),
       col = "firebrick", lty = 3, lwd = 2)
-legend("topright", c("fitted", "truth"), col = c(1, "firebrick"), 
+legend("topright", c("fitted", "truth"), col = c(1, "firebrick"),
        lty = c(1, 3), bty = "n")
 ```
 
-<img src="man/figures/README-bands-1.png" width="100%" />
+<img src="man/figures/README-terms-data-1.png" width="100%" />
+
+`predict(se.fit = TRUE)` gives the same standard errors numerically, per
+term or for the whole linear predictor, if you would rather build
+everything yourself.
 
 ## Status and scope
 

@@ -66,7 +66,8 @@ test_that("fixed arguments are resolved against the data", {
 
 test_that("families() lists what fam() can actually build", {
   f <- families()
-  expect_named(f, c("family", "parameters", "needs", "source"))
+  expect_named(f, c("family", "parameters", "needs", "support", "residuals",
+                    "source"))
   expect_true(all(c("norm", "gamma2", "skewnorm2", "zipois") %in% f$family))
   expect_gt(nrow(f), 60)
   ## nothing listed as ready to use may fail to build

@@ -147,6 +147,33 @@
   Tm
 }
 
+#' What a term plot needs, recorded at design time
+#'
+#' A one-dimensional smooth of a numeric covariate can be drawn on its own,
+#' so keep the covariate values (for the range and the rug) and, for a `by=`
+#' smooth, the value of the `by` variable that [mgcv::PredictMat()] will want:
+#' the smooth's own factor level, or 1 for a numeric `by`. Storing this means
+#' plotting needs neither the original data frame nor a refit.
+#'
+#' Returns `NULL` for anything not drawable as a single curve — tensor
+#' products, random effects, factor-smooth interactions — which the plot
+#' method reports rather than drawing wrongly.
+#'
+#' @keywords internal
+.plot_spec <- function(sm, data) {
+  if (sm$dim != 1L || length(sm$term) != 1L) return(NULL)
+  if (inherits(sm, c("random.effect", "fs.interaction"))) return(NULL)
+  xv <- data[[sm$term]]
+  if (!is.numeric(xv)) return(NULL)
+  has_by <- !is.null(sm$by) && !identical(as.character(sm$by), "NA")
+  by_val <- NULL
+  if (has_by) {
+    bv <- data[[sm$by]]
+    by_val <- if (is.factor(bv)) factor(sm$by.level, levels = levels(bv)) else 1
+  }
+  list(var = sm$term, x = xv, by = if (has_by) sm$by else NULL, by_val = by_val)
+}
+
 #' Build the design for every distributional parameter
 #'
 #' @section Identifiability:
@@ -252,7 +279,8 @@
         smooths[[length(smooths) + 1L]] <- list(
           sm = sm, re = re, Tmap = .reconstruct_map(re),
           label = sm$label, id = sj$id,
-          Xr = lapply(re$rand, as.matrix), Xf = re$Xf)
+          Xr = lapply(re$rand, as.matrix), Xf = re$Xf,
+          plot1d = .plot_spec(sm, data))
       }
     }
     parts[[p]] <- list(Xpara = Xp, terms = tt, xlev = xlev, offset = off,
@@ -299,6 +327,33 @@
       ids_p <- c(ids_p, loc)
     }
     par_blocks[[p]] <- ids_p
+  }
+
+  ## Overlapping unpenalized null spaces make the fixed-effect design rank
+  ## deficient. A smooth's null space is a low-order polynomial in its own
+  ## covariate, so `x + s(x)` fits the x main effect twice; a tensor product
+  ## carries main effects for each margin, so `t2(x, z) + s(z)` does too; and
+  ## a by-factor smooth carries one per level, so `s(x) + s(x, by = g)` does
+  ## as well.
+  ##
+  ## mgcv tolerates this because its fitted values stay identifiable even
+  ## when the individual coefficients do not. Here it is fatal rather than
+  ## untidy: a flat direction in the coefficients makes the penalized Hessian
+  ## singular, so the Laplace approximation's log-determinant is undefined and
+  ## the objective comes back non-finite. Caught here, where the cause is
+  ## still visible, rather than as a puzzling remark about the response.
+  for (p in parnames) {
+    X <- Xfix[[p]]
+    if (ncol(X) > 1L && qr(X)$rank < ncol(X)) {
+      lab <- attr(beta_idx[[p]], "labels")
+      stop("the fixed-effect design for '", p, "' is rank deficient, so the ",
+           "model is not identified: ", paste(lab, collapse = ", "), ".\n",
+           "Two smooths (or a smooth and a parametric term) share an ",
+           "unpenalized null space. Drop the duplicate: `x + s(x)` should be ",
+           "just `s(x)`, `t2(x, z) + s(z)` just `t2(x, z)`, and ",
+           "`s(x) + s(x, by = g)` is better written `s(x, g, bs = \"fs\")`, ",
+           "which is fully penalized and needs no separate main effect.")
+    }
   }
 
   keys <- vapply(blocks, `[[`, "", "sig_key")
