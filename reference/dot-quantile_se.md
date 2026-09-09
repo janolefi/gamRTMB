@@ -8,7 +8,7 @@ terms included: \\Var(q) = \sum\_{k,l} (\partial q / \partial \eta_k)
 ## Usage
 
 ``` r
-.quantile_se(object, prob, forms, Vj, h = 1e-04)
+.quantile_se(object, prob, forms, Vj, fx = object$fixed, h = 1e-04)
 ```
 
 ## Arguments
@@ -30,6 +30,10 @@ terms included: \\Var(q) = \sum\_{k,l} (\partial q / \partial \eta_k)
 
   Joint coefficient covariance from
   [`.joint_cov()`](https://janolefi.github.io/gamRTMB/reference/dot-joint_cov.md).
+
+- fx:
+
+  Resolved fixed arguments for the rows being predicted.
 
 - h:
 

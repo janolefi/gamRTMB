@@ -192,10 +192,10 @@ fit_pe <- gamRTMB(accel ~ list(mu = ~ s(times, k = 20),
                   family = fam("powerexp2"), data = mcycle)
 c(nu = exp(coef(fit_pe)$beta[["nu:(Intercept)"]]))
 #>       nu 
-#> 3.693093
+#> 2.823306
 c(gaussian = AIC(fit), power_exponential = AIC(fit_pe))
 #>          gaussian power_exponential 
-#>          1110.299          1114.118
+#>          1110.299          1121.584
 ```
 
 `nu` comes out near 3.7 rather than 2, which points to slightly
@@ -239,8 +239,22 @@ what the second smooth bought. The shaded band is the median curve’s own
 estimation uncertainty — not a prediction interval; the outer quantiles
 are that.
 
-[`predict()`](https://rdrr.io/r/stats/predict.html) gives the same
-numbers, with standard errors from the delta method across all the
+The fan summarises the fitted distribution by its quantiles. To see the
+shape itself, `type = "density"` draws the fitted density turned on its
+side at a few times. This works for every family, including the many
+that have no quantile function:
+
+``` r
+
+plot(fit, type = "density")
+```
+
+![Fitted conditional densities of acceleration, rotated and drawn at
+five times over the data. The density is a narrow spike before impact
+and much wider through it.](gamRTMB_files/figure-html/density-1.png)
+
+[`predict()`](https://rdrr.io/r/stats/predict.html) gives the quantiles
+as numbers, with standard errors from the delta method across all the
 linear predictors at once:
 
 ``` r

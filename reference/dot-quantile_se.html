@@ -48,7 +48,7 @@ terms included: \(Var(q) = \sum_{k,l} (\partial q / \partial \eta_k)
 
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">.quantile_se</span><span class="op">(</span><span class="va">object</span>, <span class="va">prob</span>, <span class="va">forms</span>, <span class="va">Vj</span>, h <span class="op">=</span> <span class="fl">1e-04</span><span class="op">)</span></span></code></pre></div>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">.quantile_se</span><span class="op">(</span><span class="va">object</span>, <span class="va">prob</span>, <span class="va">forms</span>, <span class="va">Vj</span>, fx <span class="op">=</span> <span class="va">object</span><span class="op">$</span><span class="va">fixed</span>, h <span class="op">=</span> <span class="fl">1e-04</span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div class="section level2">
@@ -69,6 +69,10 @@ terms included: \(Var(q) = \sum_{k,l} (\partial q / \partial \eta_k)
 
 <dt id="arg-vj">Vj<a class="anchor" aria-label="anchor" href="#arg-vj"></a></dt>
 <dd><p>Joint coefficient covariance from <code><a href="dot-joint_cov.html">.joint_cov()</a></code>.</p></dd>
+
+
+<dt id="arg-fx">fx<a class="anchor" aria-label="anchor" href="#arg-fx"></a></dt>
+<dd><p>Resolved fixed arguments for the rows being predicted.</p></dd>
 
 
 <dt id="arg-h">h<a class="anchor" aria-label="anchor" href="#arg-h"></a></dt>

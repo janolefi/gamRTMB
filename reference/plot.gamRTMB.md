@@ -8,10 +8,11 @@ Plot a gamRTMB fit
 # S3 method for class 'gamRTMB'
 plot(
   x,
-  type = c("terms", "qq", "worm", "quantile"),
+  type = c("terms", "qq", "worm", "quantile", "density"),
   select = NULL,
-  prob = c(0.05, 0.25, 0.5, 0.75, 0.95),
+  prob = seq(0.05, 0.95, by = 0.05),
   xvar = NULL,
+  at = NULL,
   se = TRUE,
   rug = TRUE,
   band.col = "grey85",
@@ -40,12 +41,18 @@ plot(
 
 - prob:
 
-  Probabilities for `type = "quantile"`.
+  Probabilities for `type = "quantile"`. The default is a fine fan; a
+  short vector such as `c(0.1, 0.5, 0.9)` also gets a legend.
 
 - xvar:
 
-  Covariate for the x-axis of a quantile plot. Defaults to the covariate
-  of the first smooth.
+  Covariate for the x-axis of a quantile or density plot. Defaults to
+  the covariate of the first smooth.
+
+- at:
+
+  Covariate values at which to draw conditional densities. Defaults to
+  five, evenly spaced and inset from the ends.
 
 - se:
 
@@ -114,6 +121,18 @@ middle of the distribution whose estimation uncertainty one usually
 wants next to the spread the other curves already show. Note that this
 band is the central curve's own uncertainty and is not a prediction
 interval — the outer quantiles are that.
+
+## Conditional densities (`type = "density"`)
+
+The fitted density of the response turned on its side and drawn at a few
+covariate values, over the data — the shape that the quantile fan only
+summarises, and the clearest way to see a changing skewness or a
+changing spread. It uses the family's log-density, so unlike the
+quantile plot it works for every family.
+
+Densities are scaled to a common width, not a common height, so their
+shapes are comparable; a lattice response gets a spike per integer
+rather than a filled outline.
 
 ## Diagnostics (`type = "qq"`, `type = "worm"`)
 

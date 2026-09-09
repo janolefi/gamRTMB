@@ -12,6 +12,7 @@
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-clone_spec.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-empty_corner.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-family_overrides.html</loc></url>
+<url><loc>https://janolefi.github.io/gamRTMB/reference/dot-fan_cols.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-find_density.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-find_pfun.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-fit_efs.html</loc></url>
@@ -24,11 +25,13 @@
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-link_dict.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-make_nll.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-model_data.html</loc></url>
+<url><loc>https://janolefi.github.io/gamRTMB/reference/dot-newdata_along.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-pal.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-panel_grid.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-parse_formula.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-penalized_hessian.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-pit.html</loc></url>
+<url><loc>https://janolefi.github.io/gamRTMB/reference/dot-plot_density.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-plot_quantile.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-plot_res.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-plot_spec.html</loc></url>
@@ -36,6 +39,7 @@
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-quantile_se.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-reconstruct_map.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-resolve_fixed.html</loc></url>
+<url><loc>https://janolefi.github.io/gamRTMB/reference/dot-resolve_xvar.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-smooth_idx.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-smooth_part.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/edf.html</loc></url>

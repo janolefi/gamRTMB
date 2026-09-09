@@ -42,10 +42,11 @@
     <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="co"># S3 method for class 'gamRTMB'</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span></span>
 <span>  <span class="va">x</span>,</span>
-<span>  type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"terms"</span>, <span class="st">"qq"</span>, <span class="st">"worm"</span>, <span class="st">"quantile"</span><span class="op">)</span>,</span>
+<span>  type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"terms"</span>, <span class="st">"qq"</span>, <span class="st">"worm"</span>, <span class="st">"quantile"</span>, <span class="st">"density"</span><span class="op">)</span>,</span>
 <span>  select <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  prob <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0.05</span>, <span class="fl">0.25</span>, <span class="fl">0.5</span>, <span class="fl">0.75</span>, <span class="fl">0.95</span><span class="op">)</span>,</span>
+<span>  prob <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq</a></span><span class="op">(</span><span class="fl">0.05</span>, <span class="fl">0.95</span>, by <span class="op">=</span> <span class="fl">0.05</span><span class="op">)</span>,</span>
 <span>  xvar <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  at <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  se <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  rug <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  band.col <span class="op">=</span> <span class="st">"grey85"</span>,</span>
@@ -75,12 +76,18 @@ to all of them.</p></dd>
 
 
 <dt id="arg-prob">prob<a class="anchor" aria-label="anchor" href="#arg-prob"></a></dt>
-<dd><p>Probabilities for <code>type = "quantile"</code>.</p></dd>
+<dd><p>Probabilities for <code>type = "quantile"</code>. The default is a fine
+fan; a short vector such as <code>c(0.1, 0.5, 0.9)</code> also gets a legend.</p></dd>
 
 
 <dt id="arg-xvar">xvar<a class="anchor" aria-label="anchor" href="#arg-xvar"></a></dt>
-<dd><p>Covariate for the x-axis of a quantile plot. Defaults to the
-covariate of the first smooth.</p></dd>
+<dd><p>Covariate for the x-axis of a quantile or density plot.
+Defaults to the covariate of the first smooth.</p></dd>
+
+
+<dt id="arg-at">at<a class="anchor" aria-label="anchor" href="#arg-at"></a></dt>
+<dd><p>Covariate values at which to draw conditional densities.
+Defaults to five, evenly spaced and inset from the ends.</p></dd>
 
 
 <dt id="arg-se">se<a class="anchor" aria-label="anchor" href="#arg-se"></a></dt>
@@ -151,6 +158,19 @@ of the distribution whose estimation uncertainty one usually wants next to
 the spread the other curves already show. Note that this band is the
 central curve's own uncertainty and is not a prediction interval — the
 outer quantiles are that.</p>
+    </div>
+    <div class="section level2">
+    <h2 id="conditional-densities-type-density-">Conditional densities (<code>type = "density"</code>)<a class="anchor" aria-label="anchor" href="#conditional-densities-type-density-"></a></h2>
+
+
+<p>The fitted density of the response turned on its side and drawn at a few
+covariate values, over the data — the shape that the quantile fan only
+summarises, and the clearest way to see a changing skewness or a changing
+spread. It uses the family's log-density, so unlike the quantile plot it
+works for every family.</p>
+<p>Densities are scaled to a common width, not a common height, so their
+shapes are comparable; a lattice response gets a spike per integer rather
+than a filled outline.</p>
     </div>
     <div class="section level2">
     <h2 id="diagnostics-type-qq-type-worm-">Diagnostics (<code>type = "qq"</code>, <code>type = "worm"</code>)<a class="anchor" aria-label="anchor" href="#diagnostics-type-qq-type-worm-"></a></h2>
