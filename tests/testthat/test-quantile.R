@@ -173,13 +173,14 @@ test_that("conditional density plots work wherever the density does", {
   f <- gamRTMB(accel ~ list(mean = ~ s(times, k = 20), sd = ~ s(times, k = 12)),
                data = mcycle)
   r <- plot(f, type = "density")
-  expect_named(r, c("y", paste0("d", 1:5)))
-  expect_identical(length(r$y), 200L)
-  ## each density is scaled to a common width
-  expect_true(all(vapply(r[-1], max, 0) == 1))
-  expect_true(all(vapply(r[-1], function(z) all(z >= 0), TRUE)))
+  expect_named(r, c("at", "y", "density"))
+  expect_length(unique(r$at), 5L)
+  ## each density is scaled to a common width, and none is negative
+  expect_true(all(tapply(r$density, r$at, max) == 1))
+  expect_true(all(r$density >= 0))
   ## `at` chooses the positions
-  expect_named(plot(f, type = "density", at = c(15, 30)), c("y", "d1", "d2"))
+  expect_identical(sort(unique(plot(f, type = "density", at = c(15, 30))$at)),
+                   c(15, 30))
 
   ## the point of it: this works for a family with no quantile function
   set.seed(1); n <- 500
@@ -190,8 +191,51 @@ test_that("conditional density plots work wherever the density does", {
   expect_null(fz$family$qf)
   expect_error(plot(fz, type = "quantile"), "no quantile function")
   expect_silent(rz <- plot(fz, type = "density"))
-  expect_named(rz, c("y", paste0("d", 1:5)))
+  expect_named(rz, c("at", "y", "density"))
+  expect_length(unique(rz$at), 5L)
   ## a lattice response is evaluated on the integers
   expect_true(all(rz$y == round(rz$y)))
   expect_error(plot(f, type = "density", xvar = "nope"), "must name a column")
+})
+
+test_that("link functions enter the quantile SE through the chain rule", {
+  ## For a normal with an identity-linked mean and a log-linked sd,
+  ##   Q(p) = mu + sd * z,   sd = exp(eta2)
+  ##   dQ/deta1 = 1,  dQ/deta2 = z * sd
+  ## so Var(Q) = V11 + 2 z sd V12 + z^2 sd^2 V22, with V the covariance of
+  ## the linear predictors. Checked at p != 0.5: at the median z = 0, the sd
+  ## term drops out and the link is never exercised.
+  set.seed(1); n <- 700L
+  d <- data.frame(x = runif(n))
+  d$y <- stats::rnorm(n, sin(2 * pi * d$x), exp(-1 + 0.8 * cos(2 * pi * d$x)))
+  f <- gamRTMB(y ~ list(mean = ~ s(x, k = 10), sd = ~ s(x, k = 10)), data = d)
+
+  Vj <- gamRTMB:::.joint_cov(f)
+  D <- f$design
+  form <- function(p) {
+    P <- D$parts[[p]]; np <- ncol(P$Xpara)
+    Zs <- list(P$Xpara); cols <- Vj$ib[D$beta_idx[[p]][seq_len(np)]]
+    for (j in seq_along(P$smooths)) {
+      sp <- gamRTMB:::.smooth_part(f, p, j, P$smooths[[j]]$sm$X)
+      Zs[[j + 1L]] <- sp$Z; cols <- c(cols, Vj$ir[sp$b], Vj$ib[sp$f])
+    }
+    list(L = do.call(cbind, Zs), ii = cols)
+  }
+  fm <- lapply(c("mean", "sd"), form)
+  cc <- function(a, b) rowSums((fm[[a]]$L %*%
+    Vj$V[fm[[a]]$ii, fm[[b]]$ii, drop = FALSE]) * fm[[b]]$L)
+  V11 <- cc(1, 1); V22 <- cc(2, 2); V12 <- cc(1, 2)
+  sdv <- exp(stats::predict(f)$sd)
+
+  for (p in c(0.1, 0.9)) {
+    z <- stats::qnorm(p)
+    analytic <- sqrt(V11 + 2 * z * sdv * V12 + z^2 * sdv^2 * V22)
+    got <- stats::predict(f, type = "quantile", prob = p, se.fit = TRUE)$se.fit[, 1]
+    expect_equal(as.numeric(got), as.numeric(analytic), tolerance = 1e-7)
+  }
+  ## and the cross-parameter term is not negligible
+  z <- stats::qnorm(0.9)
+  full <- sqrt(V11 + 2 * z * sdv * V12 + z^2 * sdv^2 * V22)
+  drop <- sqrt(V11 + z^2 * sdv^2 * V22)
+  expect_gt(max(abs(full - drop) / full), 0.01)
 })

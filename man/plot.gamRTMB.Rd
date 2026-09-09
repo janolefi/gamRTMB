@@ -55,9 +55,10 @@ fitting everything onto one page.}
 \item{...}{Passed to \code{\link[=plot]{plot()}}.}
 }
 \value{
-Invisibly, a list of the plotted data: one data frame per term for
-\code{type = "terms"}, or the residual quantiles for the diagnostics, so any
-panel can be rebuilt by hand.
+Invisibly, the plotted data, so any panel can be rebuilt by hand:
+one data frame per term for \code{type = "terms"}, the residual quantiles for
+the diagnostics, the fitted quantiles for \code{type = "quantile"}, and a long
+data frame of \code{at}, \code{y} and \code{density} for \code{type = "density"}.
 }
 \description{
 Plot a gamRTMB fit

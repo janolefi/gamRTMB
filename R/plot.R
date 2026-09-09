@@ -119,9 +119,10 @@
 #'   fitting everything onto one page.
 #' @param n Grid resolution for term curves.
 #' @param ... Passed to [plot()].
-#' @return Invisibly, a list of the plotted data: one data frame per term for
-#'   `type = "terms"`, or the residual quantiles for the diagnostics, so any
-#'   panel can be rebuilt by hand.
+#' @return Invisibly, the plotted data, so any panel can be rebuilt by hand:
+#'   one data frame per term for `type = "terms"`, the residual quantiles for
+#'   the diagnostics, the fitted quantiles for `type = "quantile"`, and a long
+#'   data frame of `at`, `y` and `density` for `type = "density"`.
 #' @examples
 #' set.seed(1)
 #' d <- data.frame(x1 = runif(300), x2 = runif(300))
@@ -231,10 +232,11 @@ plot.gamRTMB <- function(x, type = c("terms", "qq", "worm", "quantile",
 #' It uses the family's own log-density, so it works for every family, not
 #' only those with a quantile function.
 #'
-#' Each density is scaled to a common width rather than a common height. A
-#' common height would be more faithful — a concentrated distribution really
-#' does have a taller density — but on data where the spread changes by a
-#' factor of 40 it makes the wide ones invisible, and the shape is the point.
+#' Each density opens to the left of its position line and is scaled to a
+#' common width rather than a common height. A common height would be more
+#' faithful — a concentrated distribution really does have a taller density —
+#' but on data where the spread changes by a factor of 40 it makes the wide
+#' ones invisible, and the shape is the point.
 #'
 #' @keywords internal
 .plot_density <- function(x, xvar, at, ngrid, band.col, ...) {
@@ -251,49 +253,70 @@ plot.gamRTMB <- function(x, type = c("terms", "qq", "worm", "quantile",
 
   lattice <- x$family$support != "continuous"
   yl <- range(x$y, finite = TRUE)
-  yg <- if (lattice) seq(floor(yl[1L]), ceiling(yl[2L])) else
-    seq(yl[1L], yl[2L], length.out = ngrid)
   ## widest a density may be, in covariate units
-  w <- if (length(at) > 1L) 0.42 * min(diff(sort(at))) else 0.15 * diff(range(xv))
+  w <- if (length(at) > 1L) 0.3 * min(diff(sort(at))) else 0.12 * diff(range(xv))
 
-  dens <- lapply(seq_along(at), function(i) {
-    d <- exp(x$family$logdens(yg, .at(theta, i), .at(fx, i)))
+  dfun <- function(yv, i) {
+    d <- exp(x$family$logdens(yv, .at(theta, i), .at(fx, i)))
     d[!is.finite(d)] <- 0
-    if (max(d) > 0) d <- d / max(d)
     d
+  }
+  ## Two passes for a continuous response: locate each conditional's support
+  ## on a coarse grid spanning the data, then re-evaluate finely over just
+  ## that stretch. A single global grid renders a narrow conditional -- an sd
+  ## of 1.5 where the response spans 250 -- as three or four points.
+  curves <- lapply(seq_along(at), function(i) {
+    if (lattice) {
+      yv <- seq(floor(yl[1L]), ceiling(yl[2L]))
+      d <- dfun(yv, i)
+      k <- which(d > 0.005 * max(d, 0))
+      if (length(k)) { k <- seq.int(min(k), max(k)); yv <- yv[k]; d <- d[k] }
+    } else {
+      y0 <- seq(yl[1L], yl[2L], length.out = ngrid)
+      d0 <- dfun(y0, i)
+      k <- which(d0 > 0.005 * max(d0, 0))
+      r <- if (length(k)) range(y0[k]) else yl
+      yv <- seq(r[1L], r[2L], length.out = ngrid)
+      d <- dfun(yv, i)
+    }
+    if (max(d) > 0) d <- d / max(d)
+    list(y = yv, d = d)
   })
 
   dots <- list(...)
   pch <- .or_else(dots$pch, 20); cx <- .or_else(dots$cex, 0.5)
   col <- .or_else(dots$col, "#0B5D9E")
   dots$pch <- dots$cex <- dots$col <- NULL
+  ## include the drawn densities, or an outline that reaches past the data
+  ## runs off the panel edge and looks like a rendering fault
+  ylim <- range(c(yl, unlist(lapply(curves, `[[`, "y"))), finite = TRUE)
   .gcall(graphics::plot,
          list(x = xv, y = x$y, type = "n", bty = "n",
-              xlim = range(c(xv, at + w)), ylim = yl, xlab = xvar,
+              xlim = range(c(xv, at - w)), ylim = ylim, xlab = xvar,
               ylab = deparse(x$formula[[2L]]),
               main = paste0("conditional densities: ", x$family$family)), dots)
+  ## a full-height rule marks each position; the density outline is trimmed to
+  ## where it has mass, so the two do not compete
+  graphics::abline(v = at, col = grDevices::adjustcolor("black", 0.45), lwd = 1)
   graphics::points(xv, x$y, pch = pch, cex = cx,
                    col = grDevices::adjustcolor("black", 0.35))
-  ## Each density is trimmed to where it has mass. Drawn over the full y
-  ## range instead, the flat tails become a full-height vertical rule at every
-  ## position, which is all the eye sees.
-  for (i in seq_along(at)) {
-    k <- which(dens[[i]] > 0.005)
-    if (!length(k)) next
-    k <- seq.int(min(k), max(k))
-    yy <- yg[k]; xx <- at[i] + w * dens[[i]][k]
-    graphics::segments(at[i], min(yy), at[i], max(yy),
-                       col = grDevices::adjustcolor("black", 0.35))
-    if (lattice)
-      graphics::segments(at[i], yy, xx, yy,
-                         col = grDevices::adjustcolor(col, 0.8), lwd = 1.5)
-    else {
-      graphics::polygon(c(rep(at[i], length(yy)), rev(xx)), c(yy, rev(yy)),
-                        col = grDevices::adjustcolor(col, 0.18), border = NA)
-      graphics::lines(xx, yy, col = col, lwd = 1.2)
-    }
+  ## the fitted median, where the family has a quantile function, for a sense
+  ## of where the centre runs between the positions
+  if (!is.null(x$family$qf)) {
+    xg <- seq(min(xv), max(xv), length.out = ngrid)
+    med <- stats::predict(x, newdata = .newdata_along(x, xvar, xg),
+                          type = "quantile", prob = 0.5)
+    graphics::lines(xg, med[, 1], col = grDevices::adjustcolor("black", 0.8),
+                    lwd = 1, type = if (lattice) "s" else "l")
   }
-  invisible(stats::setNames(c(list(yg), dens), c("y", paste0("d", seq_along(at)))))
+  ## Outline only: a fill competes with the data points it sits over.
+  for (i in seq_along(at)) {
+    yy <- curves[[i]]$y; xx <- at[i] - w * curves[[i]]$d
+    if (lattice) graphics::segments(at[i], yy, xx, yy, col = col, lwd = 1.5)
+    else graphics::lines(xx, yy, col = col, lwd = 1.4)
+  }
+  invisible(do.call(rbind, lapply(seq_along(at), function(i)
+    data.frame(at = at[i], y = curves[[i]]$y, density = curves[[i]]$d))))
 }
 
 #' Fitted quantiles against one covariate
