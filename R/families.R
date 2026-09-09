@@ -96,6 +96,14 @@
                    "bct", "gengamma")
 .unit_location <- c("beta2", "zibeta2", "oibeta2", "zoibeta2")
 
+## Families whose scale parameter is relative to the location -- a coefficient
+## of variation rather than a standard deviation. The Box-Cox family is
+## parameterised this way, and starting `sigma` at log(sd(y)) there is wrong by
+## orders of magnitude: on the abdom data it gives 88.6 where the fitted value
+## is 0.058, and the Laplace approximation diverges from such a point. Another
+## thing the argument name cannot tell you.
+.cv_scale <- c("bccg", "bcpe", "bct")
+
 ## Densities that take a vector- or matrix-valued response: rejected up front
 ## rather than failing inside the AD tape. Only these six need naming -- the
 ## copula constructions take other densities rather than an `x` argument, so
@@ -386,6 +394,7 @@ fam <- function(dist, links = NULL, fixed = NULL, support = NULL,
          "an entry to .family_overrides.")
 
   dfun <- sp$dfun
+  fdist <- sp$dist
   logdens <- function(y, theta, fx = list()) {
     args <- c(list(y), theta[modelled], fx, list(log = TRUE))
     names(args)[1L] <- "x"
@@ -409,7 +418,10 @@ fam <- function(dist, links = NULL, fixed = NULL, support = NULL,
                         logit = stats::qlogis(min(max(mean(y), .01), .99)), s[[nm]])
     if ("meanlog" %in% modelled) s[["meanlog"]] <- mean(log(pmax(y, 1e-8)))
     for (nm in intersect(modelled, c("sigma", "sd", "scale")))
-      if (lk[[nm]] == "log") s[[nm]] <- log(max(stats::sd(y), 1e-3))
+      if (lk[[nm]] == "log")
+        s[[nm]] <- if (fdist %in% .cv_scale)
+          log(max(stats::sd(y) / max(abs(mean(y)), 1e-8), 1e-4))
+          else log(max(stats::sd(y), 1e-3))
     if ("zeroprob" %in% modelled)
       s[["zeroprob"]] <- stats::qlogis(min(max(mean(y == 0), 0.02), 0.5))
     s

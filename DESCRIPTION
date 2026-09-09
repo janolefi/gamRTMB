@@ -28,7 +28,10 @@ Suggests:
     testthat (>= 3.0.0),
     knitr,
     rmarkdown,
-    MASS
+    MASS,
+    gamlss,
+    gamlss.data,
+    gamlss.dist
 VignetteBuilder: knitr
 Config/testthat/edition: 3
 Roxygen: list(markdown = TRUE)
