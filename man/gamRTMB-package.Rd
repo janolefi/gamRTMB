@@ -15,9 +15,9 @@ distribution's own native parameterisation.
 }
 \section{Entry points}{
 
-\code{\link[=gamRTMB]{gamRTMB()}} fits a model, \code{\link[=rtmbdist_family]{rtmbdist_family()}} builds a family object from
-any suitable RTMBdist density, and \code{\link[=edf]{edf()}} reports effective degrees of
-freedom per smooth.
+\code{\link[=gamRTMB]{gamRTMB()}} fits a model, \code{\link[=fam]{fam()}} builds a family object from any suitable
+density, \code{\link[=families]{families()}} lists what is available, and \code{\link[=edf]{edf()}} reports
+effective degrees of freedom per smooth.
 }
 
 \references{

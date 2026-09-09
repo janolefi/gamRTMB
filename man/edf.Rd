@@ -40,5 +40,5 @@ untied and \code{id}-tied models.
 \examples{
 set.seed(1)
 d <- data.frame(x = runif(200)); d$y <- rnorm(200, sin(2 * pi * d$x), 0.3)
-edf(gamRTMB(y ~ list(mu = ~ s(x, k = 8)), data = d))
+edf(gamRTMB(y ~ list(mean = ~ s(x, k = 8)), data = d))
 }

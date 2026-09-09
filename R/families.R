@@ -1,6 +1,6 @@
-## Family objects. A family declares what can be modelled, with what link,
-## and how to evaluate the log density; it knows nothing about smooths or
-## fitting.
+## What can be fitted. A family declares which parameters are modelled, with
+## what link, and how to evaluate the log density. It knows nothing about
+## smooths or fitting.
 
 .links <- list(
   identity = list(linkfun = function(x) x,  linkinv = function(x) x),
@@ -8,12 +8,12 @@
   logit    = list(linkfun = stats::qlogis,  linkinv = RTMB::plogis)
 )
 
-#' Default links by native parameter name
+#' Default links, by native parameter name
 #'
-#' RTMBdist ships 83 densities and exposes no metadata, so nothing reports a
-#' parameter's support. Names, however, repeat across the library and mostly
-#' imply one. Only unambiguous names belong here; the rest are resolved per
-#' distribution in [.family_overrides].
+#' RTMBdist exposes no metadata, so nothing reports a parameter's support.
+#' Names, however, repeat across the library and mostly imply one. Only
+#' unambiguous names belong here; the rest are resolved per distribution in
+#' [.family_overrides].
 #'
 #' @keywords internal
 .link_dict <- c(
@@ -24,8 +24,8 @@
   omega = "log", eta = "log", a = "log", b = "log", beta = "log",
   alpha = "log", mu1 = "log", mu2 = "log",
   ## `size` here is the nbinom-type overdispersion parameter. In binomial-type
-  ## densities `size` is the known number of trials, and .family_overrides
-  ## marks it fixed there, which removes it before this lookup happens.
+  ## densities it is the known number of trials, and .family_overrides marks
+  ## it fixed there, which removes it before this lookup happens.
   size = "log",
   ## unconstrained
   mu = "identity", mean = "identity", location = "identity",
@@ -34,29 +34,33 @@
   prob = "logit", zeroprob = "logit", oneprob = "logit", rho = "logit"
 )
 
+## Argument names that are never regression parameters wherever they appear:
+## numerical guards, non-centrality, truncation bounds. Removing them by name
+## saves an override entry for every density that has one.
+.never_modelled <- c("eps", "ncp", "min", "max")
+
 #' Per-distribution corrections to the name-based defaults
 #'
 #' `links` overrides the dictionary, `fixed` marks arguments that are known
-#' data or constants rather than parameters, `modelled` pins the subset.
+#' data rather than parameters, `modelled` pins the subset.
 #'
-#' The ambiguous names, and why each needs resolving per distribution:
+#' The ambiguous names, and why each must be resolved per distribution:
 #' \describe{
 #'   \item{alpha}{a positive shape in frechet/llogis/kumar, an unconstrained
-#'     skewness in skewnorm/skewnorm2.}
+#'     skewness in skewnorm/skewnorm2/sn.}
 #'   \item{nu}{an unconstrained Box-Cox power in bccg/bcpe/bct/gengamma, a
 #'     positive power in powerexp, positive in combinom.}
 #'   \item{theta}{a positive rate in bell, a direction vector in vmf2.}
 #'   \item{size}{the overdispersion \emph{parameter} in nbinom2-type
 #'     densities, the known number of trials in binomial-type ones. The most
 #'     consequential distinction in the table.}
-#'   \item{eps, min, max}{numerical guards and truncation bounds, never
-#'     parameters.}
 #' }
 #'
 #' @keywords internal
 .family_overrides <- list(
   skewnorm    = list(links = c(alpha = "identity")),
   skewnorm2   = list(links = c(alpha = "identity")),
+  sn          = list(links = c(alpha = "identity")),
   bccg        = list(links = c(nu = "identity")),
   bcpe        = list(links = c(nu = "identity")),
   bct         = list(links = c(nu = "identity")),
@@ -65,13 +69,12 @@
   powerexp2   = list(links = c(nu = "log")),
   jsu         = list(links = c(nu = "identity")),
   jsu2        = list(links = c(nu = "identity")),
+  SHASHo      = list(links = c(nu = "identity")),
   bell        = list(links = c(theta = "log")),
   bell2       = list(links = c(mu = "log")),
   pareto      = list(links = c(mu = "log")),
-  beta        = list(fixed = "eps"),
-  beta2       = list(fixed = "eps"),
-  laplace     = list(fixed = "eps"),
-  ## size = known number of binomial trials
+  ## size = known number of trials
+  binom       = list(fixed = "size"),
   betabinom   = list(fixed = "size"),
   zibinom     = list(fixed = "size"),
   zibetabinom = list(fixed = "size"),
@@ -79,12 +82,7 @@
   hbinom      = list(fixed = "size"),
   ztbinom     = list(fixed = "size"),
   ztbetabinom = list(fixed = "size"),
-  combinom    = list(fixed = "size", links = c(nu = "log")),
-  dirmult     = list(fixed = "size"),
-  ## truncation bounds
-  truncnorm   = list(fixed = c("min", "max")),
-  trunct      = list(fixed = c("min", "max")),
-  trunct2     = list(fixed = c("min", "max"))
+  combinom    = list(fixed = "size", links = c(nu = "log"))
 )
 
 ## Location parameters whose support the NAME does not reveal. `mu`/`mean` is
@@ -98,25 +96,22 @@
                    "bct", "gengamma")
 .unit_location <- c("beta2", "zibeta2", "oibeta2", "zoibeta2")
 
-local({
-  for (d in .pos_location)
-    .family_overrides[[d]]$links <<-
-      c(.family_overrides[[d]]$links, c(mu = "log", mean = "log"))
-  for (d in .unit_location)
-    .family_overrides[[d]]$links <<-
-      c(.family_overrides[[d]]$links, c(mu = "logit"))
-})
+## Densities that take a vector- or matrix-valued response: rejected up front
+## rather than failing inside the AD tape. Only these six need naming -- the
+## copula constructions take other densities rather than an `x` argument, so
+## the shape check in .find_density() already excludes them.
+.not_families <- c("mvt", "wishart", "dirichlet", "dirmult", "vmf", "vmf2")
 
-## Not univariate regression families: vector- or matrix-valued responses, or
-## copula constructions taking other densities as arguments. Rejected up front
-## rather than failing somewhere inside the AD tape.
-.not_families <- c("copula", "dcopula", "mvcopula", "mvt", "wishart",
-                   "dirichlet", "dirmult", "vmf", "vmf2", "cmvgauss", "gmrf")
+## RTMBdist is searched first; these standard densities, which RTMB makes
+## AD-aware, fill in the families it does not carry. The rest of RTMB is
+## multivariate, a robust reparameterisation, or has no sensible default link.
+.rtmb_families <- c("norm", "pois", "binom", "gamma", "exp", "lnorm",
+                    "weibull", "cauchy", "logis", "t", "chisq")
 
 .link_neutral <- c(identity = 0, log = 0, logit = -2.2)
 
 ## Magnitude for shape parameters that must not start at zero; see the
-## zero-score discussion in rtmbdist_family(). Verified to work from 0.1 up.
+## zero-score discussion in fam(). Verified to work from 0.1 upward.
 .shape_start_mag <- 0.25
 
 .sample_skew <- function(y) {
@@ -124,23 +119,125 @@ local({
   mean(((y - mean(y)) / max(stats::sd(y), 1e-8))^3)
 }
 
-#' Build a family object from an RTMBdist density
+#' Locate a density by name
 #'
-#' Reads the density's `formals()` and derives everything needed to model it:
+#' RTMBdist first, then the curated RTMB list. Accepts either `"gamma2"` or
+#' `"dgamma2"`.
+#'
+#' @keywords internal
+.find_density <- function(dist) {
+  nm <- as.character(dist)[1L]
+  ## Try the name as given before prefixing, so that a density whose own name
+  ## begins with d ("ddirichlet", "dcopula") is not mistaken for an already
+  ## prefixed one and stripped to nonsense.
+  for (src in c("RTMBdist", "RTMB")) {
+    ns <- asNamespace(src)
+    for (cand in unique(c(nm, paste0("d", nm)))) {
+      if (!startsWith(cand, "d")) next
+      if (src == "RTMB" && !sub("^d", "", cand) %in% .rtmb_families) next
+      if (!exists(cand, ns, inherits = FALSE)) next
+      f <- get(cand, envir = ns)
+      if (is.function(f) && all(c("x", "log") %in% names(formals(f))))
+        return(list(dfun = f, name = cand, dist = sub("^d", "", cand),
+                    source = src))
+    }
+  }
+  NULL
+}
+
+#' Derive a family's structure from its density
+#'
+#' Everything that can be read off `formals()` plus the correction tables, and
+#' nothing that needs the data. Shared by [fam()] and [families()], so that
+#' listing families does not mean catching errors from constructing them.
+#'
+#' @return `NULL` if no such density; otherwise a list with the modelled
+#'   parameters, their links, dropped (derived) arguments, the fixed arguments
+#'   and which of them the user must still supply, and default starts.
+#' @keywords internal
+.classify <- function(dist, fixed = NULL) {
+  d <- .find_density(dist)
+  if (is.null(d)) return(NULL)
+  if (d$dist %in% .not_families)
+    return(structure(list(dist = d$dist), class = "gamRTMB_notfamily"))
+
+  fo <- formals(d$dfun)
+  fo <- fo[setdiff(names(fo), c("x", "log"))]
+  ov <- .family_overrides[[d$dist]]
+
+  has_default <- vapply(fo, function(z) !identical(z, quote(expr = )), TRUE)
+  ## Evaluate each default in an empty environment. A literal or a
+  ## self-contained expression (0, -Inf, NULL) evaluates; one referring to
+  ## other arguments (scale = 1/rate) does not, which is exactly the signal
+  ## that the argument is a redundant reparameterisation the density derives
+  ## for itself. Note that HAVING a default is not a fixed-versus-modelled
+  ## signal: dgamma2 defaults mean = 1, sd = 1, and both are modelled.
+  dval <- lapply(names(fo), function(a) if (!has_default[[a]]) NULL else
+    tryCatch(list(v = eval(fo[[a]], baseenv())), error = function(e) NULL))
+  names(dval) <- names(fo)
+  is_num <- vapply(names(fo), function(a) !is.null(dval[[a]]) &&
+                     is.numeric(dval[[a]]$v) && length(dval[[a]]$v) == 1L, TRUE)
+  derived <- names(fo)[has_default &
+                         vapply(names(fo), function(a) is.null(dval[[a]]), TRUE)]
+
+  ## Two kinds of non-modelled argument. A guard named in .never_modelled is
+  ## never required: if it has no default (dt's `ncp`), it is simply left out
+  ## and the density does whatever it does without it. One named in the
+  ## override table is real data (`size` = number of trials) and, lacking a
+  ## default, must be supplied.
+  guards <- intersect(names(fo), .never_modelled)
+  fixed_names <- unique(c(ov$fixed, guards, names(fixed)))
+  modelled <- if (!is.null(ov$modelled)) ov$modelled else
+    setdiff(names(fo), c(derived, fixed_names))
+
+  lk <- .link_dict[modelled]; names(lk) <- modelled
+  ## support corrections the parameter name cannot reveal
+  if (d$dist %in% .pos_location)
+    lk[names(lk) %in% c("mu", "mean")] <- "log"
+  if (d$dist %in% .unit_location)
+    lk[names(lk) == "mu"] <- "logit"
+  ovl <- ov$links[intersect(names(ov$links), modelled)]
+  if (length(ovl)) lk[names(ovl)] <- ovl
+
+  ## fixed arguments: a usable default needs nothing from the user; one with a
+  ## non-numeric default (eps = NULL) is left to the density; otherwise it is
+  ## genuinely data and must be supplied
+  vals <- list(); needs <- character(0)
+  for (nm in fixed_names) {
+    if (nm %in% names(fixed)) vals[[nm]] <- fixed[[nm]]   # the user's value wins
+    else if (nm %in% guards) next                         # leave it to the density
+    else if (is_num[[nm]] && is.finite(dval[[nm]]$v))
+      vals[[nm]] <- as.numeric(dval[[nm]]$v)
+    else if (has_default[[nm]]) next
+    else needs <- c(needs, nm)
+  }
+
+  def_start <- vapply(modelled, function(nm) {
+    v <- if (is_num[[nm]]) as.numeric(dval[[nm]]$v) else NA_real_
+    z <- if (is.na(v) || is.na(lk[[nm]])) NA_real_ else .links[[lk[[nm]]]]$linkfun(v)
+    if (is.na(z) || !is.finite(z)) .link_neutral[[if (is.na(lk[[nm]])) "identity"
+                                                  else lk[[nm]]]] else z
+  }, numeric(1))
+
+  list(dfun = d$dfun, name = d$name, dist = d$dist, source = d$source,
+       modelled = modelled, links = lk, derived = derived,
+       fixed = vals, needs = needs, def_start = def_start)
+}
+
+#' Build a family object
+#'
+#' Reads a density's `formals()` and derives everything needed to model it:
 #' the native parameter names in the density's own order, a link per
 #' parameter, which arguments are data rather than parameters, and starting
-#' values. 66 of RTMBdist's 83 densities resolve with no hand-written spec.
+#' values. Most of RTMBdist works with no hand-written family; use
+#' [families()] to see what is available.
 #'
-#' @section What is read off the density:
-#' Three things are available from `formals()` and all three are used. The
-#' \strong{native names}, kept as-is (no mu/sigma/nu/tau renaming). The
-#' author's own \strong{default values}, which are neutral in-support points
-#' and so make good starting values. And \strong{redundant arguments}, visible
-#' as a default that is an expression over other arguments
-#' (`dinvgamma`'s `scale = 1/rate`, `dinvchisq`'s `scale = 1/df`): these are
-#' dropped so the density derives them itself. Note that having a default is
-#' \emph{not} a fixed-versus-modelled signal — `dgamma2` defaults
-#' `mean = 1, sd = 1` and both are modelled.
+#' @section Where densities come from:
+#' \pkg{RTMBdist} is searched first, then a curated list of the standard
+#' densities that \pkg{RTMB} makes AD-aware (`norm`, `pois`, `binom`, `gamma`,
+#' `exp`, `lnorm`, `weibull`, `cauchy`, `logis`, `t`, `chisq`). Parameter
+#' names are always the density's own: a skew normal is `xi`, `omega`,
+#' `alpha`, and a Gaussian is `mean`, `sd`.
 #'
 #' @section Modelled versus fixed arguments:
 #' Modelled parameters get a formula, a link and smooths. Fixed arguments are
@@ -151,9 +248,9 @@ local({
 #'
 #' @section Starting values:
 #' Location parameters get data-driven starts and the rest keep the density's
-#' default, with one exception. A shape parameter entering an already mean/sd
-#' standardised density can have an \strong{identically zero score} at the
-#' symmetric point: in `dskewnorm2` the direct effect of `alpha` on the log
+#' own default, with one exception. A shape parameter entering an already
+#' mean/sd standardised density can have an \strong{identically zero score} at
+#' the symmetric point: in `dskewnorm2` the direct effect of `alpha` on the log
 #' density cancels exactly against the shift in the internal location needed
 #' to hold `mean` and `sd` fixed, so the derivative is zero for every
 #' observation at `alpha = 0` (measured at ~1e-15, i.e. exactly zero). The
@@ -162,8 +259,8 @@ local({
 #' coefficient block has no curvature either, the inner Newton solve is
 #' singular and the Laplace approximation is undefined. Such parameters start
 #' off the symmetric point instead, with the sign taken from the sample
-#' skewness — starting at `-0.5` on right-skewed data gets stuck just as
-#' badly as starting at `0`.
+#' skewness — starting at `-0.5` on right-skewed data gets stuck just as badly
+#' as starting at `0`.
 #'
 #' @param dist Density name, with or without the leading `d`
 #'   (`"skewnorm2"` or `"dskewnorm2"`).
@@ -173,93 +270,58 @@ local({
 #' @param start,eta_scale Optional replacements for the starting-value and
 #'   linear-predictor-scale heuristics.
 #' @return An object of class `gamRTMB_family`.
+#' @seealso [families()] for what is available, [gamRTMB()] to fit.
 #' @examples
-#' rtmbdist_family("gamma2")
-#' rtmbdist_family("skewnorm2")
-#' rtmbdist_family("betabinom", fixed = list(size = "trials"))
+#' fam("norm")
+#' fam("gamma2")
+#' fam("skewnorm2")
+#' fam("betabinom", fixed = list(size = "trials"))
 #' @export
-rtmbdist_family <- function(dist, links = NULL, fixed = NULL, start = NULL,
-                            eta_scale = NULL) {
-  ns <- asNamespace("RTMBdist")
-  nm <- as.character(dist)[1L]
-  dfun_name <- if (startsWith(nm, "d") && exists(nm, ns, inherits = FALSE)) nm
-               else paste0("d", nm)
-  dist <- sub("^d", "", dfun_name)
-  if (dist %in% .not_families)
-    stop("'", dist, "' is not a univariate regression family (vector- or ",
+fam <- function(dist, links = NULL, fixed = NULL, start = NULL,
+                eta_scale = NULL) {
+  sp <- .classify(dist, fixed)
+  if (is.null(sp))
+    stop("no density for '", as.character(dist)[1L],
+         "' in RTMBdist, and it is not one of the standard RTMB densities ",
+         "offered (", paste(.rtmb_families, collapse = ", "),
+         "). See families().")
+  if (inherits(sp, "gamRTMB_notfamily"))
+    stop("'", sp$dist, "' is not a univariate regression family (vector- or ",
          "matrix-valued response, or a copula construction); gamRTMB models ",
          "one scalar response per observation")
-  if (!exists(dfun_name, ns, inherits = FALSE))
-    stop("RTMBdist has no density '", dfun_name, "'")
-  dfun <- get(dfun_name, envir = ns)
+  if (length(sp$needs))
+    stop("family '", sp$dist, "' needs the fixed argument(s) ",
+         paste0("'", sp$needs, "'", collapse = ", "), " supplied from the ",
+         "data, e.g. fam(\"", sp$dist, "\", fixed = list(", sp$needs[1L],
+         " = \"", sp$needs[1L], "_column\"))")
 
-  fo <- formals(dfun)
-  fo <- fo[setdiff(names(fo), c("x", "log"))]
-  ov <- .family_overrides[[dist]]
-
-  ## classify the arguments -------------------------------------------------
-  has_default <- vapply(fo, function(z) !identical(z, quote(expr = )), TRUE)
-  ## Evaluate each default in an empty environment. A literal or self-contained
-  ## expression (0, -Inf, NULL) evaluates; one referring to other arguments
-  ## (scale = 1/rate) does not, which is exactly the signal that the argument
-  ## is a redundant reparameterisation the density derives for itself.
-  dval <- lapply(names(fo), function(a) if (!has_default[[a]]) NULL else
-    tryCatch(list(v = eval(fo[[a]], baseenv())), error = function(e) NULL))
-  names(dval) <- names(fo)
-  is_num <- vapply(names(fo), function(a)
-    !is.null(dval[[a]]) && is.numeric(dval[[a]]$v) && length(dval[[a]]$v) == 1L, TRUE)
-  derived <- names(fo)[has_default &
-                         vapply(names(fo), function(a) is.null(dval[[a]]), TRUE)]
-  fixed_names <- unique(c(ov$fixed, names(fixed)))
-  modelled <- setdiff(names(fo), c(derived, fixed_names))
-  if (!is.null(ov$modelled)) modelled <- ov$modelled
-  if (!length(modelled)) stop("no modelled parameters left for ", dfun_name)
-
-  ## links ------------------------------------------------------------------
-  lk <- .link_dict[modelled]; names(lk) <- modelled
-  ovl <- ov$links[intersect(names(ov$links), modelled)]
-  if (length(ovl)) lk[names(ovl)] <- ovl
+  modelled <- sp$modelled
+  lk <- sp$links
   if (length(links)) {
     unk <- setdiff(names(links), modelled)
     if (length(unk))
-      stop("links given for non-modelled parameter(s) ", paste(unk, collapse = ", "),
-           "; ", dfun_name, " models ", paste(modelled, collapse = ", "))
+      stop("links given for non-modelled parameter(s) ",
+           paste(unk, collapse = ", "), "; ", sp$name, " models ",
+           paste(modelled, collapse = ", "))
     lk[names(links)] <- links
   }
   if (anyNA(lk))
     stop("no default link known for parameter(s) ",
-         paste(modelled[is.na(lk)], collapse = ", "), " of ", dfun_name,
+         paste(modelled[is.na(lk)], collapse = ", "), " of ", sp$name,
          ". Pass links = c(", modelled[is.na(lk)][1L], " = \"log\"), or add ",
          "an entry to .family_overrides.")
-  bad <- setdiff(lk, names(.links))
-  if (length(bad)) stop("unsupported link(s): ", paste(bad, collapse = ", "))
 
-  def_start <- vapply(modelled, function(nm) {
-    v <- if (is_num[[nm]]) as.numeric(dval[[nm]]$v) else NA_real_
-    z <- if (is.na(v)) NA_real_ else .links[[lk[[nm]]]]$linkfun(v)
-    if (is.na(z) || !is.finite(z)) .link_neutral[[lk[[nm]]]] else z
-  }, numeric(1))
-
-  fixed_vals <- list()
-  for (nm in fixed_names) {
-    if (nm %in% names(fixed)) fixed_vals[[nm]] <- fixed[[nm]]
-    else if (is_num[[nm]] && is.finite(dval[[nm]]$v))
-      fixed_vals[[nm]] <- as.numeric(dval[[nm]]$v)
-    else if (has_default[[nm]]) next          # density supplies its own default
-    else stop("family '", dist, "' needs the fixed argument '", nm,
-              "' supplied from the data, e.g. rtmbdist_family(\"", dist,
-              "\", fixed = list(", nm, " = \"", nm, "_column\"))")
-  }
-
+  dfun <- sp$dfun
   logdens <- function(y, theta, fx = list()) {
     args <- c(list(y), theta[modelled], fx, list(log = TRUE))
     names(args)[1L] <- "x"
     do.call(dfun, args)
   }
 
-  zero_score <- modelled[lk[modelled] == "identity" &
+  def_start <- sp$def_start
+  zero_score <- modelled[lk == "identity" &
                            !modelled %in% c("mu", "mean", "location", "meanlog") &
-                           def_start[modelled] == 0]
+                           def_start == 0]
 
   start_fun <- if (!is.null(start)) start else function(y) {
     s <- def_start
@@ -285,45 +347,59 @@ rtmbdist_family <- function(dist, links = NULL, fixed = NULL, start = NULL,
         max(stats::sd(y), 1e-3) else 0.5, numeric(1)), modelled)
   }
 
-  structure(list(family = dist, dist = dfun_name, parnames = modelled,
+  structure(list(family = sp$dist, dist = sp$name, source = sp$source,
+                 parnames = modelled,
                  links = stats::setNames(as.character(lk), modelled),
-                 fixed = fixed_vals, derived = derived,
+                 fixed = sp$fixed, derived = sp$derived,
                  logdens = logdens, start = start_fun, eta_scale = scale_fun),
             class = "gamRTMB_family")
 }
 
-#' Gaussian location-scale family
+#' Available families
 #'
-#' Written out rather than derived, because RTMB's own `dnorm` is not part of
-#' RTMBdist and because this is the family the pipeline is checked against
-#' [mgcv::gaulss()] with.
+#' Every density [fam()] can turn into a family: all of \pkg{RTMBdist} that is
+#' a univariate regression family, plus the standard \pkg{RTMB} densities.
 #'
-#' @param link_mu,link_sigma Link names.
-#' @return An object of class `gamRTMB_family`.
+#' @param pattern Optional regular expression to filter family names.
+#' @return A data frame with one row per family: its name, the modelled
+#'   parameters with their links, any fixed arguments that must be supplied
+#'   from the data, and which package the density comes from.
+#' @seealso [fam()]
 #' @examples
-#' gaussian_ls()
+#' head(families(), 10)
+#' families("beta")
 #' @export
-gaussian_ls <- function(link_mu = "identity", link_sigma = "log") {
-  structure(list(
-    family = "gaussian_ls", dist = "dnorm",
-    parnames = c("mu", "sigma"),
-    links = c(mu = link_mu, sigma = link_sigma),
-    fixed = list(), derived = character(0),
-    logdens = function(y, p, fx = list()) dnorm(y, p$mu, p$sigma, log = TRUE),
-    start = function(y) c(mu = mean(y), sigma = log(stats::sd(y))),
-    eta_scale = function(y) c(mu = stats::sd(y), sigma = 0.5)
-  ), class = "gamRTMB_family")
+families <- function(pattern = NULL) {
+  cand <- unique(c(
+    grep("^d", ls(asNamespace("RTMBdist")), value = TRUE),
+    paste0("d", .rtmb_families)))
+  rows <- lapply(cand, function(nm) {
+    sp <- tryCatch(.classify(nm), error = function(e) NULL)
+    if (is.null(sp) || inherits(sp, "gamRTMB_notfamily") || anyNA(sp$links))
+      return(NULL)
+    data.frame(family = sp$dist,
+               parameters = paste(sprintf("%s/%s", sp$modelled, sp$links),
+                                  collapse = ", "),
+               needs = paste(sp$needs, collapse = ", "),
+               source = sp$source, row.names = NULL)
+  })
+  out <- do.call(rbind, rows)
+  out <- out[order(out$family), ]
+  if (!is.null(pattern)) out <- out[grepl(pattern, out$family), ]
+  rownames(out) <- NULL
+  out
 }
 
 #' @param x A `gamRTMB_family`.
 #' @param ... Ignored.
-#' @rdname rtmbdist_family
+#' @rdname fam
 #' @export
 print.gamRTMB_family <- function(x, ...) {
-  cat("gamRTMB family: ", x$family, "  [", x$dist, "]\n", sep = "")
+  cat("gamRTMB family: ", x$family, "  [", x$dist, ", ", x$source, "]\n", sep = "")
   cat("  modelled: ",
       paste(sprintf("%s (%s)", x$parnames, x$links), collapse = ", "), "\n", sep = "")
-  if (length(x$fixed)) cat("  fixed:    ", paste(names(x$fixed), collapse = ", "), "\n", sep = "")
+  if (length(x$fixed))
+    cat("  fixed:    ", paste(names(x$fixed), collapse = ", "), "\n", sep = "")
   if (length(x$derived))
     cat("  derived:  ", paste(x$derived, collapse = ", "),
         " (computed by the density)\n", sep = "")

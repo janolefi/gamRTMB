@@ -3,7 +3,7 @@
 \docType{data}
 \name{.link_dict}
 \alias{.link_dict}
-\title{Default links by native parameter name}
+\title{Default links, by native parameter name}
 \format{
 An object of class \code{character} of length 33.
 }
@@ -11,9 +11,9 @@ An object of class \code{character} of length 33.
 .link_dict
 }
 \description{
-RTMBdist ships 83 densities and exposes no metadata, so nothing reports a
-parameter's support. Names, however, repeat across the library and mostly
-imply one. Only unambiguous names belong here; the rest are resolved per
-distribution in \link{.family_overrides}.
+RTMBdist exposes no metadata, so nothing reports a parameter's support.
+Names, however, repeat across the library and mostly imply one. Only
+unambiguous names belong here; the rest are resolved per distribution in
+\link{.family_overrides}.
 }
 \keyword{internal}

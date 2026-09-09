@@ -56,9 +56,9 @@ d$y <- rnorm(n,
              mean = sin(2 * pi * d$x1) + d$x2^2,
              sd   = exp(-1 + 0.8 * cos(2 * pi * d$x1)))
 
-fit <- gamRTMB(y ~ list(mu    = ~ s(x1) + s(x2),
-                        sigma = ~ s(x1)),
-               family = gaussian_ls(), data = d)
+fit <- gamRTMB(y ~ list(mean = ~ s(x1) + s(x2),
+                        sd   = ~ s(x1)),
+               data = d)
 fit
 ```
 
@@ -77,15 +77,26 @@ grid <- data.frame(x1 = seq(0, 1, length.out = 5), x2 = 0.5)
 predict(fit, newdata = grid, type = "response")
 ```
 
-### Any RTMBdist family
+### Any family
 
-`rtmbdist_family()` derives the parameter names, links and starting values
-from the density itself, so most of RTMBdist works without a hand-written
-family. Here a skew normal with a smooth on all three parameters at once:
+`fam()` derives the parameter names, links and starting values from the
+density itself, so nothing has to be hand-written per distribution.
+`families()` lists what is available — everything in RTMBdist that is a
+univariate regression family, plus the standard densities RTMB makes
+AD-aware:
+
+```{r families}
+nrow(families())
+families("gamma|^norm$|zipois")
+```
+
+Parameter names are always the density's own, which is why a Gaussian is
+`mean`/`sd` rather than `mu`/`sigma`. Here a skew normal, with a smooth on
+all three of its parameters at once:
 
 ```{r skewnorm}
-fam <- rtmbdist_family("skewnorm2")
-fam
+f <- fam("skewnorm2")
+f
 
 set.seed(2)
 n <- 1500
@@ -96,7 +107,7 @@ d2$y <- RTMBdist::rskewnorm2(n,
   alpha = 2.5 * sin(2 * pi * d2$x3))
 
 fit2 <- gamRTMB(y ~ list(mean = ~ s(x1), sd = ~ s(x2), alpha = ~ s(x3)),
-                family = fam, data = d2)
+                family = f, data = d2)
 edf(fit2)
 ```
 
@@ -105,7 +116,7 @@ binomial trials, truncation bounds — are declared separately and are not
 reachable from the formula:
 
 ```{r fixed}
-rtmbdist_family("betabinom", fixed = list(size = "trials"))
+fam("betabinom", fixed = list(size = "trials"))
 ```
 
 ### Shared smoothing parameters
@@ -115,9 +126,9 @@ rtmbdist_family("betabinom", fixed = list(size = "trials"))
 each term). Unlike mgcv, the group may span distributional parameters:
 
 ```{r id}
-fit3 <- gamRTMB(y ~ list(mu    = ~ s(x1, id = "sh"),
-                         sigma = ~ s(x1, id = "sh")),
-                family = gaussian_ls(), data = d)
+fit3 <- gamRTMB(y ~ list(mean = ~ s(x1, id = "sh"),
+                         sd   = ~ s(x1, id = "sh")),
+                data = d)
 fit3
 edf(fit3)
 ```
@@ -128,18 +139,17 @@ Ask for the joint precision matrix at fit time and `predict()` will return
 standard errors, per term or for the whole linear predictor:
 
 ```{r bands, fig.height = 3.2, fig.width = 5}
-fitb <- gamRTMB(y ~ list(mu = ~ s(x1) + s(x2), sigma = ~ s(x1)),
-                family = gaussian_ls(), data = d, joint_precision = TRUE)
+fitb <- gamRTMB(y ~ list(mean = ~ s(x1) + s(x2), sd = ~ s(x1)), data = d)
 
 g <- data.frame(x1 = seq(0, 1, length.out = 200), x2 = 0.5)
 tm <- predict(fitb, newdata = g, type = "terms", se.fit = TRUE)
 
 par(mar = c(4, 4, 1, 1))
-plot(g$x1, tm$mu$fit[, 1], type = "l", lwd = 2, ylim = c(-2, 2),
+plot(g$x1, tm$mean$fit[, 1], type = "l", lwd = 2, ylim = c(-2, 2),
      xlab = "x1", ylab = "s(x1)")
 polygon(c(g$x1, rev(g$x1)),
-        c(tm$mu$fit[, 1] + 2 * tm$mu$se[, 1],
-          rev(tm$mu$fit[, 1] - 2 * tm$mu$se[, 1])),
+        c(tm$mean$fit[, 1] + 2 * tm$mean$se[, 1],
+          rev(tm$mean$fit[, 1] - 2 * tm$mean$se[, 1])),
         col = adjustcolor("steelblue", 0.25), border = NA)
 lines(g$x1, sin(2 * pi * g$x1) - mean(sin(2 * pi * d$x1)),
       col = 2, lty = 2, lwd = 2)

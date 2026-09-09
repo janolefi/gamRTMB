@@ -1,3 +1,132 @@
+## The objective. Deliberately a plain closure over the design: it says
+## nothing about how it will be optimised, and in particular nothing about
+## which coefficients are treated as random effects. That is the engine's
+## choice, which is what keeps a non-Laplace engine (see
+## dev/NOTES-fellner-schall.md) a matter of adding a fitting function rather
+## than rewriting the model.
+
+#' Build the joint negative log-likelihood
+#'
+#' The penalized coefficients carry an iid \eqn{N(0, \sigma_k^2)} prior, one
+#' variance per penalized block. Null-space coefficients live in `beta` and
+#' are never given a prior. Nothing is shared across smooths or across
+#' distributional parameters unless an `id` says so.
+#'
+#' @param design From [.build_design()].
+#' @param family A `gamRTMB_family`.
+#' @param y Response.
+#' @param fx Resolved fixed arguments.
+#' @return A function of a parameter list `list(beta, b, log_sigma)`.
+#' @keywords internal
+.make_nll <- function(design, family, y, fx = list()) {
+  parnames  <- design$parnames
+  Xfix      <- design$Xfix
+  beta_idx  <- design$beta_idx
+  blocks    <- design$blocks
+  par_blocks <- design$par_blocks
+  linkinv   <- lapply(family$links, function(l) .links[[l]]$linkinv)
+  names(linkinv) <- parnames
+  logdens   <- family$logdens
+
+  function(pv) {
+    RTMB::getAll(pv)
+    yo <- RTMB::OBS(y)
+    jnll <- 0
+
+    for (k in seq_along(blocks))
+      jnll <- jnll - sum(dnorm(b[blocks[[k]]$idx], 0, exp(log_sigma[k]),
+                               log = TRUE))
+
+    theta <- list()
+    for (p in parnames) {
+      eta <- as.vector(Xfix[[p]] %*% beta[beta_idx[[p]]])
+      for (k in par_blocks[[p]])
+        eta <- eta + as.vector(blocks[[k]]$X %*% b[blocks[[k]]$idx])
+      theta[[p]] <- linkinv[[p]](eta)
+    }
+    jnll - sum(logdens(yo, theta, fx))
+  }
+}
+
+#' Starting parameter values
+#'
+#' Intercepts start on the link scale from the family's `start()`; coefficients
+#' start at zero.
+#'
+#' For the variance components, cold-starting every log-sigma at zero is slow
+#' and can wander on flat marginal surfaces. Instead pick \eqn{\sigma_k} so
+#' that the term's implied prior standard deviation,
+#' \eqn{\sigma_k \sqrt{mean(rowSums(X_r^2))}}, is `frac` of the rough scale
+#' of that parameter's linear predictor, which the family supplies. Blocks
+#' tied by an `id` get a common value, since only one of them survives the
+#' mapping.
+#'
+#' @keywords internal
+.init_pars <- function(design, family, y, frac = 0.2, start = NULL) {
+  beta0 <- numeric(design$nbeta)
+  s0 <- family$start(y)
+  for (p in design$parnames) {
+    ii <- design$beta_idx[[p]]
+    k <- match("(Intercept)", attr(ii, "labels"))
+    if (!is.na(k)) beta0[ii[k]] <- s0[[p]]
+  }
+  sc <- family$eta_scale(y)
+  ls0 <- vapply(design$blocks, function(bl) {
+    rs <- sqrt(mean(rowSums(bl$X^2)))
+    log(max(frac * sc[[bl$par]] / max(rs, 1e-8), 1e-4))
+  }, numeric(1))
+  pars <- list(beta = beta0, b = numeric(design$nb),
+               log_sigma = stats::ave(ls0, design$sig_group))
+  if (!is.null(start)) pars[names(start)] <- start
+  pars
+}
+
+#' Detect a distributional parameter that starts at a useless stationary point
+#'
+#' A parameter whose intercept has an identically zero score cannot move, and
+#' a smooth on it then drifts on a flat surface instead of failing loudly.
+#' `dskewnorm2`'s `alpha` does this at `alpha = 0`; see [fam()].
+#'
+#' A zero score is not on its own a problem: an intercept started at its own
+#' marginal optimum has one too, and that is exactly where it should be
+#' (`dnbinom2`'s `mu` started at `log(mean(y))` has a zero score and fits
+#' perfectly). The two are told apart by probing rather than by curvature —
+#' perturb the intercept either way and see whether the objective actually
+#' falls. A stationary point that can be improved on by stepping away from it
+#' is the bad kind.
+#'
+#' @param grad Joint gradient at the starting values.
+#' @param eval_at Function of a full parameter vector returning the objective.
+#' @param pfull The full starting parameter vector.
+#' @param is_beta Logical index of the `beta` entries within `pfull`.
+#' @param design,parnames Design and parameter names.
+#' @return A message describing the affected parameters, or `NULL`.
+#' @keywords internal
+.flat_start <- function(grad, eval_at, pfull, is_beta, design, parnames) {
+  if (!any(is.finite(grad))) return(NULL)
+  tol <- 1e-8 * max(abs(grad[is.finite(grad)]), 1)
+  f0 <- eval_at(pfull)
+  gb <- grad[is_beta]
+  flat <- character(0)
+  for (p in parnames) {
+    ii <- design$beta_idx[[p]]
+    k <- match("(Intercept)", attr(ii, "labels"))
+    if (is.na(k) || !is.finite(gb[ii[k]]) || abs(gb[ii[k]]) >= tol) next
+    j <- which(is_beta)[ii[k]]
+    drop <- vapply(c(-0.25, 0.25), function(h) {
+      pp <- pfull; pp[j] <- pp[j] + h
+      f0 - tryCatch(eval_at(pp), error = function(e) Inf)
+    }, numeric(1))
+    if (any(is.finite(drop) & drop > 1e-6 * max(abs(f0), 1))) flat <- c(flat, p)
+  }
+  if (!length(flat)) return(NULL)
+  paste0("the score for '", paste(flat, collapse = "', '"), "' is numerically ",
+         "zero at the starting values, at a point that is not optimal, so ",
+         if (length(flat) > 1) "these parameters cannot" else "this parameter cannot",
+         " move. Pass a different intercept via start = list(beta = ...), or a ",
+         "start() in the family spec.")
+}
+
 #' Fit a distributional GAM
 #'
 #' Smooth terms on every parameter of a distribution, fitted by combining
@@ -8,7 +137,7 @@
 #' @section Formula:
 #' The response is the left-hand side of the outer formula and each
 #' distributional parameter gets a one-sided formula:
-#' `y ~ list(mu = ~ s(x1) + s(x2), sigma = ~ s(x1))`. Parameters the family
+#' `y ~ list(mean = ~ s(x1) + s(x2), sd = ~ s(x1))`. Parameters the family
 #' declares but the formula omits are given `~1`. Parameter names are the
 #' density's own (`xi`, `omega`, `alpha` for a skew normal), not generic
 #' location/scale/shape labels.
@@ -39,17 +168,17 @@
 #'
 #' @param formula A two-sided formula whose right-hand side is a `list()` of
 #'   per-parameter formulas.
-#' @param family A `gamRTMB_family`, from [rtmbdist_family()] or
-#'   [gaussian_ls()].
+#' @param family A `gamRTMB_family`, from [fam()]. See [families()].
 #' @param data A data frame.
 #' @param knots Passed to [mgcv::smoothCon()].
 #' @param method `"REML"` (default) or `"ML"`.
 #' @param engine Fitting engine; only `"laplace"` is implemented.
 #' @param sigma_frac Tuning constant for the variance-component starting
-#'   values; see [.init_log_sigma()].
+#'   values; see [.init_pars()].
 #' @param joint_precision Ask [RTMB::sdreport()] for the joint precision
-#'   matrix, needed for standard errors on smooth terms. Costs more on larger
-#'   models.
+#'   matrix, which [predict()] needs for standard errors. On by default; turn
+#'   it off to save time and memory on large models where bands are not
+#'   wanted.
 #' @param start Optional named list overriding entries of the starting
 #'   parameter list (`beta`, `b`, `log_sigma`).
 #' @param silent Passed to [RTMB::MakeADFun()].
@@ -59,21 +188,21 @@
 #' set.seed(1)
 #' d <- data.frame(x1 = runif(200), x2 = runif(200))
 #' d$y <- rnorm(200, sin(2 * pi * d$x1), exp(-1 + d$x2))
-#' fit <- gamRTMB(y ~ list(mu = ~ s(x1, k = 8), sigma = ~ s(x2, k = 8)),
-#'                family = gaussian_ls(), data = d)
+#' fit <- gamRTMB(y ~ list(mean = ~ s(x1, k = 8), sd = ~ s(x2, k = 8)),
+#'                data = d)
 #' fit
 #' edf(fit)
 #' @export
-gamRTMB <- function(formula, family = gaussian_ls(), data,
+gamRTMB <- function(formula, family = fam("norm"), data,
                     knots = NULL, method = c("REML", "ML"),
                     engine = c("laplace", "efs"), sigma_frac = 0.2,
-                    joint_precision = FALSE, start = NULL, silent = TRUE,
+                    joint_precision = TRUE, start = NULL, silent = TRUE,
                     control = list()) {
   method <- match.arg(method)
   engine <- match.arg(engine)
   if (!inherits(family, "gamRTMB_family"))
-    stop("`family` must be a gamRTMB_family, e.g. gaussian_ls() or ",
-         "rtmbdist_family(\"gamma2\")")
+    stop("`family` must be a gamRTMB_family, e.g. fam(\"norm\") or ",
+         "fam(\"gamma2\"); see families()")
   if (missing(data) || !is.data.frame(data))
     stop("`data` must be a data frame")
 
@@ -126,6 +255,18 @@ gamRTMB <- function(formula, family = gaussian_ls(), data,
   msg <- if (!is.null(g0))
     .flat_start(g0, function(p) obj$env$f(p, order = 0), pfull,
                 names(pfull) == "beta", design, design$parnames) else NULL
+
+  ## A finite objective with a non-finite gradient is not a data problem: it
+  ## means the density's derivative is broken at these parameter values, which
+  ## no starting value or optimiser setting can rescue. Say that, rather than
+  ## letting nlminb fail obscurely. (RTMBdist's dtruncnorm does this for an
+  ## infinite bound: the value is right and d/d(sd) is NaN.)
+  if (!is.null(g0) && is.finite(obj$env$f(pfull, order = 0)) && anyNA(g0))
+    stop("the objective is finite at the starting values but its gradient is ",
+         "not, so family '", family$family, "' cannot be differentiated here. ",
+         "This is a property of the density rather than of the data: check ",
+         "for infinite fixed arguments (bounds), and pass large finite values ",
+         "instead if so.", call. = FALSE)
 
   ## A flat direction can be worse than leaving a parameter stuck: with no
   ## curvature in that coefficient block either, the inner Newton solve is

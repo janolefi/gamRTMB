@@ -57,7 +57,7 @@ demo_gamma2 <- function(n = 800, seed = 1) {
   eta <- list(mean = 1.2 + 0.8 * f1(d$x1), sd = 0.2 + 0.6 * f2(d$x2))
   d$y <- rgamma2(n, exp(eta$mean), exp(eta$sd))
   fit <- gamRTMB(y ~ list(mean = ~ s(x1, k = 10), sd = ~ s(x2, k = 10)),
-                     family = rtmbdist_family("gamma2"), data = d)
+                     family = fam("gamma2"), data = d)
   report(fit, eta, "gamma2(mean, sd)")
 }
 
@@ -72,7 +72,7 @@ demo_skewnorm2 <- function(n = 2000, seed = 2) {
   d$y <- rskewnorm2(n, eta$mean, exp(eta$sd), eta$alpha)
   fit <- gamRTMB(y ~ list(mean = ~ s(x1, k = 10), sd = ~ s(x2, k = 10),
                               alpha = ~ s(x3, k = 10)),
-                     family = rtmbdist_family("skewnorm2"), data = d)
+                     family = fam("skewnorm2"), data = d)
   report(fit, eta, "skewnorm2(mean, sd, alpha)")
 }
 
@@ -99,7 +99,7 @@ demo_zipois <- function(n = 1500, seed = 3) {
   eta <- list(lambda = 1.5 + f1(d$x1), zeroprob = -1 + f2(d$x2))
   d$y <- .rzipois_aligned(n, exp(eta$lambda), plogis(eta$zeroprob))
   fit <- gamRTMB(y ~ list(lambda = ~ s(x1, k = 10), zeroprob = ~ s(x2, k = 10)),
-                     family = rtmbdist_family("zipois"), data = d)
+                     family = fam("zipois"), data = d)
   report(fit, eta, "zipois(lambda, zeroprob)")
 }
 
@@ -110,7 +110,7 @@ demo_nbinom2 <- function(n = 2000, seed = 4) {
   eta <- list(mu = 2 + 0.8 * f1(d$x1), size = 1 + f2(d$x2))
   d$y <- rnbinom2(n, exp(eta$mu), exp(eta$size))
   fit <- gamRTMB(y ~ list(mu = ~ s(x1, k = 10), size = ~ s(x2, k = 10)),
-                     family = rtmbdist_family("nbinom2"), data = d)
+                     family = fam("nbinom2"), data = d)
   report(fit, eta, "nbinom2(mu, size)")
 }
 
@@ -120,7 +120,7 @@ demo_betabinom <- function(n = 1500, seed = 5) {
   d <- data.frame(x1 = runif(n), x2 = runif(n), trials = sample(10:30, n, TRUE))
   eta <- list(shape1 = 1 + 0.8 * f1(d$x1), shape2 = 1 + 0.8 * f2(d$x2))
   d$y <- rbetabinom(n, d$trials, exp(eta$shape1), exp(eta$shape2))
-  fam <- rtmbdist_family("betabinom", fixed = list(size = "trials"))
+  fam <- fam("betabinom", fixed = list(size = "trials"))
   fit <- gamRTMB(y ~ list(shape1 = ~ s(x1, k = 10), shape2 = ~ s(x2, k = 10)),
                      family = fam, data = d)
   report(fit, eta, "betabinom(size = trials, shape1, shape2)")
@@ -136,7 +136,7 @@ if (!interactive()) {
   cat("family layer: ")
   nres <- length(grep("^d", ls("package:RTMBdist"), value = TRUE))
   auto <- sum(vapply(grep("^d", ls("package:RTMBdist"), value = TRUE),
-                     function(x) !is.null(tryCatch(rtmbdist_family(x),
+                     function(x) !is.null(tryCatch(fam(x),
                                                    error = function(e) NULL)), TRUE))
   cat(auto, "of", nres, "RTMBdist densities resolve with no hand-written spec\n")
   demo_gamma2(); demo_skewnorm2(); demo_zipois(); demo_nbinom2(); demo_betabinom()

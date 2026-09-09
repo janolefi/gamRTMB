@@ -47,7 +47,7 @@
 #' @examples
 #' set.seed(1)
 #' d <- data.frame(x = runif(200)); d$y <- rnorm(200, sin(2 * pi * d$x), 0.3)
-#' edf(gamRTMB(y ~ list(mu = ~ s(x, k = 8)), data = d))
+#' edf(gamRTMB(y ~ list(mean = ~ s(x, k = 8)), data = d))
 #' @export
 edf <- function(object, ...) UseMethod("edf")
 
@@ -68,9 +68,10 @@ edf.gamRTMB <- function(object, ...) {
   edf_all <- 1 - sj * dH
 
   rows <- list()
-  for (p in D$parnames) for (s in D$parts[[p]]$smooths) {
-    ii <- c(unlist(lapply(s$block_ids, function(k) ph$i_b[D$blocks[[k]]$idx])),
-            if (length(s$f_local)) ph$i_beta[D$beta_idx[[p]][s$f_local]] else integer(0))
+  for (p in D$parnames) for (j in seq_along(D$parts[[p]]$smooths)) {
+    s <- D$parts[[p]]$smooths[[j]]
+    idx <- .smooth_idx(D, p, j)
+    ii <- c(ph$i_b[idx$b], ph$i_beta[idx$f])
     rows[[length(rows) + 1L]] <- data.frame(
       parameter = p, term = s$label, edf = sum(edf_all[ii]),
       k = ncol(s$sm$X),
@@ -81,6 +82,21 @@ edf.gamRTMB <- function(object, ...) {
     data.frame(parameter = character(), term = character(), edf = numeric())
   attr(res, "edf.total") <- sum(edf_all)
   res
+}
+
+#' Where one smooth's coefficients live in the joint vectors
+#'
+#' Four places need the same thing: which entries of `b` and which entries of
+#' `beta` belong to smooth `j` of parameter `p` (its penalized blocks, then
+#' its null-space columns). Gathering it once keeps [edf()], the coefficient
+#' reconstruction and both covariance helpers in step.
+#'
+#' @return `list(b, f)`, indices into the `b` and `beta` vectors.
+#' @keywords internal
+.smooth_idx <- function(design, p, j) {
+  s <- design$parts[[p]]$smooths[[j]]
+  list(b = unlist(lapply(s$block_ids, function(k) design$blocks[[k]]$idx)),
+       f = if (length(s$f_local)) design$beta_idx[[p]][s$f_local] else integer(0))
 }
 
 #' Joint covariance of all coefficients
@@ -105,12 +121,10 @@ edf.gamRTMB <- function(object, ...) {
 #'
 #' @keywords internal
 .smooth_vcov <- function(fit, p, j, Vj) {
-  D <- fit$design
-  s <- D$parts[[p]]$smooths[[j]]
-  ir <- unlist(lapply(s$block_ids, function(k) Vj$ir[D$blocks[[k]]$idx]))
-  ifx <- if (length(s$f_local)) Vj$ib[D$beta_idx[[p]][s$f_local]] else integer(0)
-  ii <- c(ir, ifx)
-  s$Tmap %*% Vj$V[ii, ii, drop = FALSE] %*% t(s$Tmap)
+  Tm <- fit$design$parts[[p]]$smooths[[j]]$Tmap
+  idx <- .smooth_idx(fit$design, p, j)
+  ii <- c(Vj$ir[idx$b], Vj$ib[idx$f])
+  Tm %*% Vj$V[ii, ii, drop = FALSE] %*% t(Tm)
 }
 
 #' Covariance of a whole linear predictor's coefficients
@@ -124,11 +138,10 @@ edf.gamRTMB <- function(object, ...) {
   npara <- ncol(P$Xpara)
   cols <- Vj$ib[D$beta_idx[[p]][seq_len(npara)]]
   Tlist <- list(diag(1, npara))
-  for (s in P$smooths) {
-    ir <- unlist(lapply(s$block_ids, function(k) Vj$ir[D$blocks[[k]]$idx]))
-    ifx <- if (length(s$f_local)) Vj$ib[D$beta_idx[[p]][s$f_local]] else integer(0)
-    cols <- c(cols, ir, ifx)
-    Tlist[[length(Tlist) + 1L]] <- s$Tmap
+  for (j in seq_along(P$smooths)) {
+    idx <- .smooth_idx(D, p, j)
+    cols <- c(cols, Vj$ir[idx$b], Vj$ib[idx$f])
+    Tlist[[length(Tlist) + 1L]] <- P$smooths[[j]]$Tmap
   }
   Tb <- as.matrix(Matrix::bdiag(Tlist))
   Tb %*% Vj$V[cols, cols, drop = FALSE] %*% t(Tb)
@@ -138,10 +151,7 @@ edf.gamRTMB <- function(object, ...) {
 #'
 #' @keywords internal
 .smooth_beta <- function(fit, p, j) {
-  D <- fit$design
-  s <- D$parts[[p]]$smooths[[j]]
-  br <- unlist(lapply(s$block_ids, function(k) fit$coefficients$b[D$blocks[[k]]$idx]))
-  bf <- if (length(s$f_local))
-    fit$coefficients$beta[D$beta_idx[[p]][s$f_local]] else numeric(0)
-  as.vector(s$Tmap %*% c(br, bf))
+  idx <- .smooth_idx(fit$design, p, j)
+  cf <- c(fit$coefficients$b[idx$b], fit$coefficients$beta[idx$f])
+  as.vector(fit$design$parts[[p]]$smooths[[j]]$Tmap %*% cf)
 }

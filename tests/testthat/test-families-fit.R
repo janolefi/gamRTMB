@@ -15,7 +15,7 @@ test_that("gamma2: two positive parameters are recovered", {
               sd = 0.2 + 0.6 * cos(2 * pi * d$x2))
   d$y <- RTMBdist::rgamma2(n, exp(eta$mean), exp(eta$sd))
   fit <- gamRTMB(y ~ list(mean = ~ s(x1, k = 10), sd = ~ s(x2, k = 10)),
-                 family = rtmbdist_family("gamma2"), data = d)
+                 family = fam("gamma2"), data = d)
   expect_true(fit$convergence)
   p <- stats::predict(fit)
   expect_lt(sqrt(mean((p$mean - eta$mean)^2)), 0.2 * stats::sd(eta$mean))
@@ -32,7 +32,7 @@ test_that("skewnorm2: smooths on three parameters at once", {
   d$y <- RTMBdist::rskewnorm2(n, eta$mean, exp(eta$sd), eta$alpha)
   fit <- gamRTMB(y ~ list(mean = ~ s(x1, k = 10), sd = ~ s(x2, k = 10),
                           alpha = ~ s(x3, k = 10)),
-                 family = rtmbdist_family("skewnorm2"), data = d)
+                 family = fam("skewnorm2"), data = d)
   expect_true(fit$convergence)
   expect_identical(nrow(edf(fit)), 3L)
   p <- stats::predict(fit)
@@ -49,7 +49,7 @@ test_that("zipois: discrete, with a logit-linked parameter", {
   d$y <- ifelse(runif(n) < stats::plogis(eta$zeroprob), 0,
                 stats::rpois(n, exp(eta$lambda)))
   fit <- gamRTMB(y ~ list(lambda = ~ s(x1, k = 10), zeroprob = ~ s(x2, k = 10)),
-                 family = rtmbdist_family("zipois"), data = d)
+                 family = fam("zipois"), data = d)
   expect_true(fit$convergence)
   p <- stats::predict(fit)
   expect_lt(sqrt(mean((p$lambda - eta$lambda)^2)), 0.3 * stats::sd(eta$lambda))
@@ -62,7 +62,7 @@ test_that("betabinom: a fixed argument taken from the data", {
   eta <- list(shape1 = 1 + 0.8 * sin(2 * pi * d$x1),
               shape2 = 1 + 0.8 * cos(2 * pi * d$x2))
   d$y <- RTMBdist::rbetabinom(n, d$trials, exp(eta$shape1), exp(eta$shape2))
-  fam <- rtmbdist_family("betabinom", fixed = list(size = "trials"))
+  fam <- fam("betabinom", fixed = list(size = "trials"))
   fit <- gamRTMB(y ~ list(shape1 = ~ s(x1, k = 10), shape2 = ~ s(x2, k = 10)),
                  family = fam, data = d)
   expect_true(fit$convergence)
@@ -76,9 +76,9 @@ test_that("a spurious smooth on a flat parameter collapses to its null space", {
   set.seed(11); n <- 600
   d <- data.frame(x1 = runif(n), x2 = runif(n))
   d$y <- stats::rnorm(n, sin(2 * pi * d$x1) + d$x2, exp(-1))   # sigma constant
-  fit <- gamRTMB(y ~ list(mu = ~ s(x1, k = 10) + s(x2, k = 10),
-                          sigma = ~ s(x2, k = 10)),
-                 family = gaussian_ls(), data = d)
+  fit <- gamRTMB(y ~ list(mean = ~ s(x1, k = 10) + s(x2, k = 10),
+                          sd = ~ s(x2, k = 10)),
+                 data = d)
   e <- edf(fit)
-  expect_lt(e$edf[e$parameter == "sigma"], 2)
+  expect_lt(e$edf[e$parameter == "sd"], 2)
 })

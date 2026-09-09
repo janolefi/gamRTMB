@@ -5,28 +5,26 @@
 \alias{.family_overrides}
 \title{Per-distribution corrections to the name-based defaults}
 \format{
-An object of class \code{list} of length 39.
+An object of class \code{list} of length 24.
 }
 \usage{
 .family_overrides
 }
 \description{
 \code{links} overrides the dictionary, \code{fixed} marks arguments that are known
-data or constants rather than parameters, \code{modelled} pins the subset.
+data rather than parameters, \code{modelled} pins the subset.
 }
 \details{
-The ambiguous names, and why each needs resolving per distribution:
+The ambiguous names, and why each must be resolved per distribution:
 \describe{
 \item{alpha}{a positive shape in frechet/llogis/kumar, an unconstrained
-skewness in skewnorm/skewnorm2.}
+skewness in skewnorm/skewnorm2/sn.}
 \item{nu}{an unconstrained Box-Cox power in bccg/bcpe/bct/gengamma, a
 positive power in powerexp, positive in combinom.}
 \item{theta}{a positive rate in bell, a direction vector in vmf2.}
 \item{size}{the overdispersion \emph{parameter} in nbinom2-type
 densities, the known number of trials in binomial-type ones. The most
 consequential distinction in the table.}
-\item{eps, min, max}{numerical guards and truncation bounds, never
-parameters.}
 }
 }
 \keyword{internal}

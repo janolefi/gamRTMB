@@ -9,13 +9,13 @@
 \usage{
 gamRTMB(
   formula,
-  family = gaussian_ls(),
+  family = fam("norm"),
   data,
   knots = NULL,
   method = c("REML", "ML"),
   engine = c("laplace", "efs"),
   sigma_frac = 0.2,
-  joint_precision = FALSE,
+  joint_precision = TRUE,
   start = NULL,
   silent = TRUE,
   control = list()
@@ -31,8 +31,7 @@ gamRTMB(
 \item{formula}{A two-sided formula whose right-hand side is a \code{list()} of
 per-parameter formulas.}
 
-\item{family}{A \code{gamRTMB_family}, from \code{\link[=rtmbdist_family]{rtmbdist_family()}} or
-\code{\link[=gaussian_ls]{gaussian_ls()}}.}
+\item{family}{A \code{gamRTMB_family}, from \code{\link[=fam]{fam()}}. See \code{\link[=families]{families()}}.}
 
 \item{data}{A data frame.}
 
@@ -43,11 +42,12 @@ per-parameter formulas.}
 \item{engine}{Fitting engine; only \code{"laplace"} is implemented.}
 
 \item{sigma_frac}{Tuning constant for the variance-component starting
-values; see \code{\link[=.init_log_sigma]{.init_log_sigma()}}.}
+values; see \code{\link[=.init_pars]{.init_pars()}}.}
 
 \item{joint_precision}{Ask \code{\link[RTMB:TMB-interface]{RTMB::sdreport()}} for the joint precision
-matrix, needed for standard errors on smooth terms. Costs more on larger
-models.}
+matrix, which \code{\link[=predict]{predict()}} needs for standard errors. On by default; turn
+it off to save time and memory on large models where bands are not
+wanted.}
 
 \item{start}{Optional named list overriding entries of the starting
 parameter list (\code{beta}, \code{b}, \code{log_sigma}).}
@@ -86,7 +86,7 @@ so it is not comparable across different fixed-effect structures.
 
 The response is the left-hand side of the outer formula and each
 distributional parameter gets a one-sided formula:
-\code{y ~ list(mu = ~ s(x1) + s(x2), sigma = ~ s(x1))}. Parameters the family
+\code{y ~ list(mean = ~ s(x1) + s(x2), sd = ~ s(x1))}. Parameters the family
 declares but the formula omits are given \code{~1}. Parameter names are the
 density's own (\code{xi}, \code{omega}, \code{alpha} for a skew normal), not generic
 location/scale/shape labels.
@@ -126,8 +126,8 @@ including across distributional parameters.
 set.seed(1)
 d <- data.frame(x1 = runif(200), x2 = runif(200))
 d$y <- rnorm(200, sin(2 * pi * d$x1), exp(-1 + d$x2))
-fit <- gamRTMB(y ~ list(mu = ~ s(x1, k = 8), sigma = ~ s(x2, k = 8)),
-               family = gaussian_ls(), data = d)
+fit <- gamRTMB(y ~ list(mean = ~ s(x1, k = 8), sd = ~ s(x2, k = 8)),
+               data = d)
 fit
 edf(fit)
 }

@@ -9,9 +9,9 @@
 #' distribution's own native parameterisation.
 #'
 #' @section Entry points:
-#' [gamRTMB()] fits a model, [rtmbdist_family()] builds a family object from
-#' any suitable RTMBdist density, and [edf()] reports effective degrees of
-#' freedom per smooth.
+#' [gamRTMB()] fits a model, [fam()] builds a family object from any suitable
+#' density, [families()] lists what is available, and [edf()] reports
+#' effective degrees of freedom per smooth.
 #'
 #' @references
 #' Wood, S. N. (2011) Fast stable restricted maximum likelihood and marginal
@@ -28,7 +28,7 @@
 "_PACKAGE"
 NULL
 
-## RTMBdist densities are resolved dynamically by name in rtmbdist_family(),
+## RTMBdist densities are resolved dynamically by name in fam(),
 ## since the point is to support the whole library rather than a fixed list.
 ## The importFrom above therefore looks unused: it is there to declare the
 ## hard dependency that the dynamic lookup relies on.
