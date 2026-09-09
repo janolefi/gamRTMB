@@ -54,17 +54,56 @@ fit
 #>   family:    norm (mean/identity, sd/log)
 #>   criterion: REML   engine: laplace
 #>   converged: TRUE   -logLik: 258.4182   max|grad|: 9.58e-06
+#>   observations: 500
 #>   coefficients: 5 fixed (incl. null spaces), 24 penalized; 3 smoothing parameters
 ```
 
-Effective degrees of freedom per smooth, as in a `gam` summary:
+`summary()` lays this out per distributional parameter — every parameter
+has its own formula, link, coefficients and smooths:
 
 ``` r
-edf(fit)
-#>   parameter  term      edf k     sp id
-#> 1      mean s(x1) 7.482610 9 0.1192   
-#> 2      mean s(x2) 3.688019 9  9.331   
-#> 3        sd s(x1) 5.710145 9 0.1814
+summary(fit)
+#> 
+#> Family: norm   [dnorm from RTMB]
+#> Links:  mean = identity,  sd = log
+#> 
+#> Formula:
+#>   mean ~ s(x1) + s(x2)
+#>     sd ~ s(x1)
+#> 
+#> Parametric coefficients:
+#>                  Estimate Std. Error z value Pr(>|z|)    
+#> mean:(Intercept)  0.36556    0.02247   16.27   <2e-16 ***
+#> sd:(Intercept)   -0.98778    0.03184  -31.02   <2e-16 ***
+#> ---
+#> Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+#> 
+#> Smooth terms:
+#>        term   edf k     sp
+#>  mean:s(x1) 7.483 9 0.1192
+#>  mean:s(x2) 3.688 9  9.331
+#>  sd:s(x1)   5.710 9 0.1814
+#> 
+#> Total EDF = 18.88   n = 500
+#> -REML = 258.418   logLik = -215.580   AIC = 468.92
+```
+
+Smooth terms are reported with their effective degrees of freedom and
+smoothing parameters, but deliberately without p-values: mgcv’s
+“approximate significance” rests on Wood’s test for a term’s whole
+coefficient block, and a naive Wald test in its place would mislead.
+`edf(fit)` returns that table on its own.
+
+`AIC()` and `BIC()` use the log-likelihood at the fitted coefficients
+with the total effective degrees of freedom — the same convention as
+mgcv and GAMLSS’s GAIC — not the REML criterion, which is not a
+likelihood and is not comparable across mean structures. The criterion
+itself stays available as `fit$objective`.
+
+``` r
+c(logLik = as.numeric(logLik(fit)), df = attr(logLik(fit), "df"), AIC = AIC(fit))
+#>     logLik         df        AIC 
+#> -215.57982   18.88077  468.92119
 ```
 
 Predictions come back as one vector per distributional parameter. New
@@ -142,6 +181,34 @@ fam("betabinom", fixed = list(size = "trials"))
 #>   fixed:    size
 ```
 
+### Weights, offsets and missing data
+
+Prior weights multiply each observation’s log-density contribution,
+exactly as in `glm()`. An `offset()` goes inside the formula of the
+parameter it belongs to — per-parameter, because `sd = ~ offset(log(s))`
+means something quite different from the same term on `mean`. Missing
+values in any model variable are handled by `na.action`, `na.omit` by
+default, and the number of dropped rows is reported.
+
+``` r
+set.seed(4)
+n <- 400
+p <- data.frame(x = runif(n), E = runif(n, 1, 5))
+p$y <- rpois(n, p$E * exp(sin(2 * pi * p$x)))
+p$y[1:3] <- NA
+
+fit_p <- gamRTMB(y ~ list(lambda = ~ s(x) + offset(log(E))),
+                 family = fam("pois"), data = p,
+                 weights = rep(c(1, 2), n / 2))
+fit_p
+#> gamRTMB fit
+#>   family:    pois (lambda/log)
+#>   criterion: REML   engine: laplace
+#>   converged: TRUE   -logLik: 1099.6227   max|grad|: 3.33e-06
+#>   observations: 397 (3 dropped: missing), prior weights
+#>   coefficients: 2 fixed (incl. null spaces), 8 penalized; 1 smoothing parameter
+```
+
 ### Shared smoothing parameters
 
 `s(..., id = )` ties smooths to one smoothing parameter, exactly as in
@@ -158,6 +225,7 @@ fit3
 #>   family:    norm (mean/identity, sd/log)
 #>   criterion: REML   engine: laplace
 #>   converged: TRUE   -logLik: 423.9595   max|grad|: 8.13e-08
+#>   observations: 500
 #>   coefficients: 4 fixed (incl. null spaces), 16 penalized; 2 smoothing parameters (1 free, 1 tied by id)
 edf(fit3)
 #>   parameter  term      edf k     sp id

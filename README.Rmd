@@ -62,10 +62,27 @@ fit <- gamRTMB(y ~ list(mean = ~ s(x1) + s(x2), sd = ~ s(x1)), data = d)
 fit
 ```
 
-Effective degrees of freedom per smooth, as in a `gam` summary:
+`summary()` lays this out per distributional parameter — every parameter has
+its own formula, link, coefficients and smooths:
 
-```{r edf}
-edf(fit)
+```{r summary}
+summary(fit)
+```
+
+Smooth terms are reported with their effective degrees of freedom and
+smoothing parameters, but deliberately without p-values: mgcv's "approximate
+significance" rests on Wood's test for a term's whole coefficient block, and a
+naive Wald test in its place would mislead. `edf(fit)` returns that table on
+its own.
+
+`AIC()` and `BIC()` use the log-likelihood at the fitted coefficients with the
+total effective degrees of freedom — the same convention as mgcv and GAMLSS's
+GAIC — not the REML criterion, which is not a likelihood and is not comparable
+across mean structures. The criterion itself stays available as
+`fit$objective`.
+
+```{r aic}
+c(logLik = as.numeric(logLik(fit)), df = attr(logLik(fit), "df"), AIC = AIC(fit))
 ```
 
 Predictions come back as one vector per distributional parameter. New data is
@@ -117,6 +134,28 @@ reachable from the formula:
 
 ```{r fixed}
 fam("betabinom", fixed = list(size = "trials"))
+```
+
+### Weights, offsets and missing data
+
+Prior weights multiply each observation's log-density contribution, exactly as
+in `glm()`. An `offset()` goes inside the formula of the parameter it belongs
+to — per-parameter, because `sd = ~ offset(log(s))` means something quite
+different from the same term on `mean`. Missing values in any model variable
+are handled by `na.action`, `na.omit` by default, and the number of dropped
+rows is reported.
+
+```{r plumbing}
+set.seed(4)
+n <- 400
+p <- data.frame(x = runif(n), E = runif(n, 1, 5))
+p$y <- rpois(n, p$E * exp(sin(2 * pi * p$x)))
+p$y[1:3] <- NA
+
+fit_p <- gamRTMB(y ~ list(lambda = ~ s(x) + offset(log(E))),
+                 family = fam("pois"), data = p,
+                 weights = rep(c(1, 2), n / 2))
+fit_p
 ```
 
 ### Shared smoothing parameters

@@ -12,18 +12,24 @@
 #' are never given a prior. Nothing is shared across smooths or across
 #' distributional parameters unless an `id` says so.
 #'
+#' Prior weights multiply each observation's log-density contribution, as in
+#' [stats::glm()]. Offsets are added to the relevant parameter's linear
+#' predictor.
+#'
 #' @param design From [.build_design()].
 #' @param family A `gamRTMB_family`.
 #' @param y Response.
 #' @param fx Resolved fixed arguments.
+#' @param w Prior weights, or `NULL` for unweighted.
 #' @return A function of a parameter list `list(beta, b, log_sigma)`.
 #' @keywords internal
-.make_nll <- function(design, family, y, fx = list()) {
+.make_nll <- function(design, family, y, fx = list(), w = NULL) {
   parnames  <- design$parnames
   Xfix      <- design$Xfix
   beta_idx  <- design$beta_idx
   blocks    <- design$blocks
   par_blocks <- design$par_blocks
+  offsets   <- lapply(design$parts, `[[`, "offset")
   linkinv   <- lapply(family$links, function(l) .links[[l]]$linkinv)
   names(linkinv) <- parnames
   logdens   <- family$logdens
@@ -39,12 +45,13 @@
 
     theta <- list()
     for (p in parnames) {
-      eta <- as.vector(Xfix[[p]] %*% beta[beta_idx[[p]]])
+      eta <- as.vector(Xfix[[p]] %*% beta[beta_idx[[p]]]) + offsets[[p]]
       for (k in par_blocks[[p]])
         eta <- eta + as.vector(blocks[[k]]$X %*% b[blocks[[k]]$idx])
       theta[[p]] <- linkinv[[p]](eta)
     }
-    jnll - sum(logdens(yo, theta, fx))
+    ld <- logdens(yo, theta, fx)
+    jnll - if (is.null(w)) sum(ld) else sum(w * ld)
   }
 }
 
@@ -169,7 +176,13 @@
 #' @param formula A two-sided formula whose right-hand side is a `list()` of
 #'   per-parameter formulas.
 #' @param family A `gamRTMB_family`, from [fam()]. See [families()].
-#' @param data A data frame.
+#' @param data A data frame. Every model variable must be a column of it.
+#' @param weights Optional prior weights, evaluated in `data`. As in
+#'   [stats::glm()], each observation's log-density contribution is multiplied
+#'   by its weight.
+#' @param na.action How to treat missing values in any model variable;
+#'   [stats::na.omit()] by default, which drops those rows and reports how
+#'   many in the fit's summary.
 #' @param knots Passed to [mgcv::smoothCon()].
 #' @param method `"REML"` (default) or `"ML"`.
 #' @param engine Fitting engine; only `"laplace"` is implemented.
@@ -193,8 +206,9 @@
 #' fit
 #' edf(fit)
 #' @export
-gamRTMB <- function(formula, family = fam("norm"), data,
-                    knots = NULL, method = c("REML", "ML"),
+gamRTMB <- function(formula, family = fam("norm"), data, weights = NULL,
+                    na.action = stats::na.omit, knots = NULL,
+                    method = c("REML", "ML"),
                     engine = c("laplace", "efs"), sigma_frac = 0.2,
                     joint_precision = TRUE, start = NULL, silent = TRUE,
                     control = list()) {
@@ -206,12 +220,14 @@ gamRTMB <- function(formula, family = fam("norm"), data,
   if (missing(data) || !is.data.frame(data))
     stop("`data` must be a data frame")
 
+  w <- eval(substitute(weights), data, parent.frame())
   pf <- .parse_formula(formula, family$parnames)
-  y <- eval(pf$response, data, environment(formula))
+  md <- .model_data(pf$response, pf$par_formulas, data, w, na.action)
+  data <- md$data; y <- md$y; w <- md$weights
   design <- .build_design(pf$par_formulas, data, family$parnames, knots = knots)
   fx <- .resolve_fixed(family, data, length(y))
   pars <- .init_pars(design, family, y, sigma_frac, start)
-  nll <- .make_nll(design, family, y, fx)
+  nll <- .make_nll(design, family, y, fx, w)
 
   fit <- switch(engine,
     laplace = .fit_laplace(nll, pars, design, method, joint_precision, silent,
@@ -226,6 +242,9 @@ gamRTMB <- function(formula, family = fam("norm"), data,
   fit$par_formulas <- pf$par_formulas
   fit$y <- y
   fit$fixed <- fx
+  fit$weights <- w
+  fit$dropped <- md$dropped
+  fit$na.action <- na.action
   structure(fit, class = "gamRTMB")
 }
 
@@ -280,8 +299,13 @@ gamRTMB <- function(formula, family = fam("norm"), data,
                   family$family, "', and consider passing start = list(beta = ...)."))
   if (!is.null(msg)) warning(msg, call. = FALSE)
 
+  ## With no smooths at all there is nothing for the outer optimiser to do:
+  ## every coefficient is already handled by the inner Laplace problem.
   ctl <- utils::modifyList(list(eval.max = 2000, iter.max = 1000), control)
-  opt <- stats::nlminb(obj$par, obj$fn, obj$gr, control = ctl)
+  opt <- if (length(obj$par))
+    stats::nlminb(obj$par, obj$fn, obj$gr, control = ctl)
+  else list(par = obj$par, objective = obj$fn(obj$par), convergence = 0L,
+            message = "no smoothing parameters to estimate")
   sdr <- RTMB::sdreport(obj, getJointPrecision = joint_precision)
 
   pl <- obj$env$parList(par = obj$env$last.par.best)
@@ -290,7 +314,7 @@ gamRTMB <- function(formula, family = fam("norm"), data,
        log_sigma = pl$log_sigma,               # full length, not the mapped one
        objective = opt$objective,
        convergence = opt$convergence == 0,
-       max_grad = max(abs(obj$gr(opt$par))))
+       max_grad = if (length(obj$par)) max(abs(obj$gr(opt$par))) else 0)
 }
 
 #' Extended Fellner-Schall engine (not implemented)

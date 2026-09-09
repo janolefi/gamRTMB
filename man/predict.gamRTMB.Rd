@@ -20,7 +20,8 @@ in-sample linear predictors are returned.}
 
 \item{type}{\code{"link"} (default) for the linear predictors, \code{"response"} for
 the parameters on their natural scale, \code{"terms"} for the contribution of
-each smooth separately.}
+each smooth separately. As in mgcv, \code{"terms"} excludes the intercept and
+any offset, which belong to the predictor rather than to a smooth.}
 
 \item{se.fit}{Also return standard errors; needs a fit made with
 \code{joint_precision = TRUE}.}

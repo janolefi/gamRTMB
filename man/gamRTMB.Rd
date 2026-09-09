@@ -2,15 +2,17 @@
 % Please edit documentation in R/fit.R, R/methods.R
 \name{gamRTMB}
 \alias{gamRTMB}
+\alias{nobs.gamRTMB}
 \alias{coef.gamRTMB}
 \alias{fitted.gamRTMB}
-\alias{logLik.gamRTMB}
 \title{Fit a distributional GAM}
 \usage{
 gamRTMB(
   formula,
   family = fam("norm"),
   data,
+  weights = NULL,
+  na.action = stats::na.omit,
   knots = NULL,
   method = c("REML", "ML"),
   engine = c("laplace", "efs"),
@@ -21,11 +23,11 @@ gamRTMB(
   control = list()
 )
 
+\method{nobs}{gamRTMB}(object, ...)
+
 \method{coef}{gamRTMB}(object, ...)
 
 \method{fitted}{gamRTMB}(object, ...)
-
-\method{logLik}{gamRTMB}(object, ...)
 }
 \arguments{
 \item{formula}{A two-sided formula whose right-hand side is a \code{list()} of
@@ -33,7 +35,15 @@ per-parameter formulas.}
 
 \item{family}{A \code{gamRTMB_family}, from \code{\link[=fam]{fam()}}. See \code{\link[=families]{families()}}.}
 
-\item{data}{A data frame.}
+\item{data}{A data frame. Every model variable must be a column of it.}
+
+\item{weights}{Optional prior weights, evaluated in \code{data}. As in
+\code{\link[stats:glm]{stats::glm()}}, each observation's log-density contribution is multiplied
+by its weight.}
+
+\item{na.action}{How to treat missing values in any model variable;
+\code{\link[stats:na.fail]{stats::na.omit()}} by default, which drops those rows and reports how
+many in the fit's summary.}
 
 \item{knots}{Passed to \code{\link[mgcv:smoothCon]{mgcv::smoothCon()}}.}
 
@@ -71,15 +81,13 @@ differentiation and Laplace approximation, over the log-densities in
 }
 \section{Methods (by generic)}{
 \itemize{
+\item \code{nobs(gamRTMB)}: Number of observations actually used.
+
 \item \code{coef(gamRTMB)}: Coefficients, as a list of the fixed (\code{beta}) and
 penalized (\code{b}) vectors plus the log variance components.
 
 \item \code{fitted(gamRTMB)}: Fitted values of every distributional parameter, on the
 response scale.
-
-\item \code{logLik(gamRTMB)}: The value of the fitting criterion. Note that under
-\code{method = "REML"} this is the restricted criterion, not the likelihood,
-so it is not comparable across different fixed-effect structures.
 
 }}
 \section{Formula}{

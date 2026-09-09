@@ -4,7 +4,7 @@
 \alias{.make_nll}
 \title{Build the joint negative log-likelihood}
 \usage{
-.make_nll(design, family, y, fx = list())
+.make_nll(design, family, y, fx = list(), w = NULL)
 }
 \arguments{
 \item{design}{From \code{\link[=.build_design]{.build_design()}}.}
@@ -14,6 +14,8 @@
 \item{y}{Response.}
 
 \item{fx}{Resolved fixed arguments.}
+
+\item{w}{Prior weights, or \code{NULL} for unweighted.}
 }
 \value{
 A function of a parameter list \code{list(beta, b, log_sigma)}.
@@ -23,5 +25,10 @@ The penalized coefficients carry an iid \eqn{N(0, \sigma_k^2)} prior, one
 variance per penalized block. Null-space coefficients live in \code{beta} and
 are never given a prior. Nothing is shared across smooths or across
 distributional parameters unless an \code{id} says so.
+}
+\details{
+Prior weights multiply each observation's log-density contribution, as in
+\code{\link[stats:glm]{stats::glm()}}. Offsets are added to the relevant parameter's linear
+predictor.
 }
 \keyword{internal}

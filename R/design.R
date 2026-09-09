@@ -40,6 +40,61 @@
   list(response = formula[[2L]], par_formulas = out[parnames])
 }
 
+#' Assemble the model data
+#'
+#' Collects every variable the model touches — via [mgcv::interpret.gam()]'s
+#' `fake.formula`, which reports the variables inside `s()` terms as well as
+#' the parametric and offset ones — applies `na.action` to that set, and
+#' returns the data with incomplete rows dropped, together with the response
+#' and prior weights aligned to it.
+#'
+#' Model variables must be columns of `data`. R would otherwise let them come
+#' from the calling environment, where dropping rows for missing values could
+#' silently misalign them against the response.
+#'
+#' @param response The response expression (LHS of the outer formula).
+#' @param par_formulas One-sided formulas, one per distributional parameter.
+#' @param data A data frame.
+#' @param weights Evaluated prior weights, or `NULL`.
+#' @param na.action Missing-data action, e.g. [stats::na.omit()].
+#' @return `list(data, y, weights, dropped)`.
+#' @keywords internal
+.model_data <- function(response, par_formulas, data, weights, na.action) {
+  vars <- unique(c(all.vars(response),
+                   unlist(lapply(par_formulas, function(f)
+                     all.vars(mgcv::interpret.gam(f)$fake.formula)))))
+  extra <- setdiff(vars, names(data))
+  if (length(extra))
+    stop("every model variable must be a column of `data`; not found: ",
+         paste(extra, collapse = ", "))
+
+  n0 <- nrow(data)
+  if (!is.null(weights)) {
+    if (!is.numeric(weights))
+      stop("`weights` must be numeric")
+    if (length(weights) == 1L) weights <- rep(weights, n0)
+    if (length(weights) != n0)
+      stop("`weights` has length ", length(weights), ", need 1 or ", n0)
+    if (any(weights < 0, na.rm = TRUE)) stop("`weights` must be non-negative")
+  }
+
+  mf <- stats::model.frame(stats::reformulate(vars), data = data,
+                           na.action = na.action)
+  drop <- attr(mf, "na.action")
+  if (length(drop)) {
+    data <- data[-drop, , drop = FALSE]
+    if (!is.null(weights)) weights <- weights[-drop]
+  }
+  if (!is.null(weights) && anyNA(weights))
+    stop("`weights` contains missing values")
+  if (!nrow(data)) stop("no complete observations left after na.action")
+
+  ## every model variable is a column of `data` (checked above), so the
+  ## response needs no enclosing environment beyond base
+  list(data = data, y = eval(response, data, baseenv()),
+       weights = weights, dropped = length(drop))
+}
+
 #' Copy a basis specification onto another term
 #'
 #' Local stand-in for the unexported `mgcv:::clone.smooth.spec`: the first
@@ -103,6 +158,14 @@
 #' null-space columns are appended to that parameter's fixed-effect matrix and
 #' are never pooled into the random-effect sum.
 #'
+#' @section Offsets:
+#' An `offset()` term inside a parameter's formula adds a fixed, known
+#' contribution to that parameter's linear predictor. Offsets are
+#' per-parameter because that is the only meaningful reading in a
+#' distributional model: `sd = ~ offset(log(s))` says something quite
+#' different from the same term on `mean`. The term is recomputed from
+#' `newdata` when predicting.
+#'
 #' @section Shared smoothing parameters:
 #' `s(..., id = )` does two things in mgcv and both are reproduced.
 #' \emph{Linked bases}: the basis is built from the pooled covariate values of
@@ -164,8 +227,11 @@
   for (p in parnames) {
     gp <- gps[[p]]
     tt <- stats::terms(gp$pf, data = data)
+    pmf <- stats::model.frame(tt, data)
     Xp <- stats::model.matrix(tt, data)
-    xlev <- stats::.getXlevels(tt, stats::model.frame(tt, data))
+    xlev <- stats::.getXlevels(tt, pmf)
+    off <- stats::model.offset(pmf)
+    if (is.null(off)) off <- 0 else if (length(off) == 1L) off <- rep(off, n)
 
     smooths <- list()
     for (j in seq_along(gp$smooth.spec)) {
@@ -189,7 +255,8 @@
           Xr = lapply(re$rand, as.matrix), Xf = re$Xf)
       }
     }
-    parts[[p]] <- list(Xpara = Xp, terms = tt, xlev = xlev, smooths = smooths)
+    parts[[p]] <- list(Xpara = Xp, terms = tt, xlev = xlev, offset = off,
+                       smooths = smooths)
   }
 
   ## index bookkeeping over the two coefficient vectors ---------------------

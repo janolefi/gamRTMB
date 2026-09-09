@@ -37,6 +37,16 @@ null-space columns are appended to that parameter's fixed-effect matrix and
 are never pooled into the random-effect sum.
 }
 
+\section{Offsets}{
+
+An \code{offset()} term inside a parameter's formula adds a fixed, known
+contribution to that parameter's linear predictor. Offsets are
+per-parameter because that is the only meaningful reading in a
+distributional model: \code{sd = ~ offset(log(s))} says something quite
+different from the same term on \code{mean}. The term is recomputed from
+\code{newdata} when predicting.
+}
+
 \section{Shared smoothing parameters}{
 
 \code{s(..., id = )} does two things in mgcv and both are reproduced.

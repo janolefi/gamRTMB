@@ -20,5 +20,21 @@
 An object of class \code{summary.gamRTMB}.
 }
 \description{
-Summarise a gamRTMB fit
+Laid out like \code{\link[mgcv:summary.gam]{mgcv::summary.gam()}}, but with one row per distributional
+parameter throughout, since every parameter has its own formula, link,
+coefficients and smooths.
+}
+\details{
+Parametric coefficients get standard errors from \code{\link[=vcov.gamRTMB]{vcov.gamRTMB()}} and
+approximate Gaussian (z) tests. Smooth terms are reported with their
+effective degrees of freedom and smoothing parameters but \strong{no
+p-values}: mgcv's "approximate significance" rests on Wood's (2013) test
+for a term's whole coefficient block, which is not implemented here, and a
+naive Wald test in its place would be misleading.
+}
+\examples{
+set.seed(1)
+d <- data.frame(x1 = runif(300), x2 = runif(300))
+d$y <- rnorm(300, sin(2 * pi * d$x1), exp(-1 + d$x2))
+summary(gamRTMB(y ~ list(mean = ~ s(x1), sd = ~ s(x2)), data = d))
 }
