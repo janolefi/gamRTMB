@@ -69,6 +69,17 @@
 #' central curve's own uncertainty and is not a prediction interval — the
 #' outer quantiles are that.
 #'
+#' @section Conditional densities (`type = "density"`):
+#' The fitted density of the response turned on its side and drawn at a few
+#' covariate values, over the data — the shape that the quantile fan only
+#' summarises, and the clearest way to see a changing skewness or a changing
+#' spread. It uses the family's log-density, so unlike the quantile plot it
+#' works for every family.
+#'
+#' Densities are scaled to a common width, not a common height, so their
+#' shapes are comparable; a lattice response gets a spike per integer rather
+#' than a filled outline.
+#'
 #' @section Diagnostics (`type = "qq"`, `type = "worm"`):
 #' Both use the randomised quantile residuals of [residuals.gamRTMB()]. The QQ
 #' plot references the identity line, because these residuals should be
@@ -97,9 +108,12 @@
 #' @param rug Add a rug of the observed covariate values.
 #' @param band.col Fill for the interval band. A solid light grey by default,
 #'   which renders the same on every device.
-#' @param prob Probabilities for `type = "quantile"`.
-#' @param xvar Covariate for the x-axis of a quantile plot. Defaults to the
-#'   covariate of the first smooth.
+#' @param prob Probabilities for `type = "quantile"`. The default is a fine
+#'   fan; a short vector such as `c(0.1, 0.5, 0.9)` also gets a legend.
+#' @param xvar Covariate for the x-axis of a quantile or density plot.
+#'   Defaults to the covariate of the first smooth.
+#' @param at Covariate values at which to draw conditional densities.
+#'   Defaults to five, evenly spaced and inset from the ends.
 #' @param nsim Randomisation draws to overlay in a QQ or worm plot.
 #' @param ask Draw one panel per page, waiting between them, instead of
 #'   fitting everything onto one page.
@@ -117,9 +131,10 @@
 #' plot(fit, select = "sd")
 #' plot(fit, type = "worm")
 #' @export
-plot.gamRTMB <- function(x, type = c("terms", "qq", "worm", "quantile"),
-                         select = NULL, prob = c(0.05, 0.25, 0.5, 0.75, 0.95),
-                         xvar = NULL, se = TRUE, rug = TRUE,
+plot.gamRTMB <- function(x, type = c("terms", "qq", "worm", "quantile",
+                                     "density"),
+                         select = NULL, prob = seq(0.05, 0.95, by = 0.05),
+                         xvar = NULL, at = NULL, se = TRUE, rug = TRUE,
                          band.col = "grey85", nsim = 1, ask = FALSE,
                          n = 200, ...) {
   type <- match.arg(type)
@@ -127,7 +142,29 @@ plot.gamRTMB <- function(x, type = c("terms", "qq", "worm", "quantile"),
     terms    = .plot_terms(x, select, se, rug, band.col, ask, n, ...),
     qq       = .plot_res(x, nsim, FALSE, se, band.col, ...),
     worm     = .plot_res(x, nsim, TRUE,  se, band.col, ...),
-    quantile = .plot_quantile(x, xvar, prob, se, band.col, n, ...))
+    quantile = .plot_quantile(x, xvar, prob, se, band.col, n, ...),
+    density  = .plot_density(x, xvar, at, n, band.col, ...))
+}
+
+#' Colours for a fan of quantile curves
+#'
+#' One hue throughout, with the median in black: a fan of quantiles is one
+#' ordered family, not a set of unrelated series, so different colours and
+#' line types would imply distinctions that are not there. Opacity carries the
+#' ordering instead, fading outwards from the median, which keeps a dense fan
+#' legible and reads as the density it approximates.
+#'
+#' @param prob Probabilities, in the order they will be drawn.
+#' @return A character vector of colours.
+#' @keywords internal
+.fan_cols <- function(prob, hue = "#0B5D9E") {
+  d <- abs(prob - 0.5) / 0.5                       # 0 at the median, 1 at the ends
+  out <- grDevices::adjustcolor(rep(hue, length(prob)),
+                                alpha.f = 1)
+  vapply(seq_along(prob), function(k)
+    if (isTRUE(all.equal(d[k], 0))) "black"
+    else grDevices::adjustcolor(hue, alpha.f = max(0.9 - 0.6 * d[k], 0.2)),
+    "")
 }
 
 #' The emptiest corner, for a legend
@@ -146,32 +183,125 @@ plot.gamRTMB <- function(x, type = c("terms", "qq", "worm", "quantile"),
   names(n)[which.min(n)]
 }
 
-#' Fitted quantiles against one covariate
+#' The covariate a response plot varies along
+#'
+#' Defaults to the covariate of the first drawable smooth.
+#'
 #' @keywords internal
-.plot_quantile <- function(x, xvar, prob, se, band.col, ngrid, ...) {
-  D <- x$design
+.resolve_xvar <- function(fit, xvar) {
   if (is.null(xvar)) {
-    v <- unlist(lapply(D$parnames, function(p)
-      lapply(D$parts[[p]]$smooths, function(s) s$plot1d$var)))
+    v <- unlist(lapply(fit$design$parnames, function(p)
+      lapply(fit$design$parts[[p]]$smooths, function(s) s$plot1d$var)))
     if (!length(v))
       stop("no smooth covariate to plot against; name one with xvar =")
     xvar <- v[[1L]]
   }
-  if (!xvar %in% names(x$data))
+  if (!xvar %in% names(fit$data))
     stop("`xvar` must name a column of the model data: ",
-         paste(names(x$data), collapse = ", "))
-  xv <- x$data[[xvar]]
-  if (!is.numeric(xv)) stop("`xvar` must be a numeric covariate")
+         paste(names(fit$data), collapse = ", "))
+  if (!is.numeric(fit$data[[xvar]]))
+    stop("`xvar` must be a numeric covariate")
+  xvar
+}
 
-  ## other covariates at a typical value, so one curve per probability
-  nd <- x$data[rep(1L, ngrid), , drop = FALSE]
+#' New data varying one covariate, the others at a typical value
+#'
+#' The median for a numeric covariate and the modal level for a factor, so
+#' that a response plot shows one curve per probability rather than a bundle.
+#' With more than one covariate the fitted curves and the plotted points
+#' therefore do not condition on quite the same thing.
+#'
+#' @keywords internal
+.newdata_along <- function(fit, xvar, values) {
+  nd <- fit$data[rep(1L, length(values)), , drop = FALSE]
   for (v in setdiff(names(nd), xvar)) {
-    cl <- x$data[[v]]
+    cl <- fit$data[[v]]
     nd[[v]] <- if (is.factor(cl))
-      factor(rep(names(which.max(table(cl))), ngrid), levels = levels(cl))
-      else rep(stats::median(cl), ngrid)
+      factor(rep(names(which.max(table(cl))), length(values)), levels = levels(cl))
+      else rep(stats::median(cl), length(values))
   }
-  nd[[xvar]] <- seq(min(xv), max(xv), length.out = ngrid)
+  nd[[xvar]] <- values
+  nd
+}
+
+#' Rotated conditional densities at a few covariate values
+#'
+#' The fitted density of the response, turned on its side and drawn at chosen
+#' positions along a covariate — the shape the quantile fan only summarises.
+#' It uses the family's own log-density, so it works for every family, not
+#' only those with a quantile function.
+#'
+#' Each density is scaled to a common width rather than a common height. A
+#' common height would be more faithful — a concentrated distribution really
+#' does have a taller density — but on data where the spread changes by a
+#' factor of 40 it makes the wide ones invisible, and the shape is the point.
+#'
+#' @keywords internal
+.plot_density <- function(x, xvar, at, ngrid, band.col, ...) {
+  xvar <- .resolve_xvar(x, xvar)
+  xv <- x$data[[xvar]]
+  if (is.null(at)) {
+    ## inset from the ends, or half of each density hangs off the panel
+    r <- range(xv); pad <- 0.08 * diff(r)
+    at <- seq(r[1L] + pad, r[2L] - pad, length.out = 5L)
+  }
+  nd <- .newdata_along(x, xvar, at)
+  theta <- stats::predict(x, newdata = nd, type = "response")
+  fx <- .resolve_fixed(x$family, nd, length(at))
+
+  lattice <- x$family$support != "continuous"
+  yl <- range(x$y, finite = TRUE)
+  yg <- if (lattice) seq(floor(yl[1L]), ceiling(yl[2L])) else
+    seq(yl[1L], yl[2L], length.out = ngrid)
+  ## widest a density may be, in covariate units
+  w <- if (length(at) > 1L) 0.42 * min(diff(sort(at))) else 0.15 * diff(range(xv))
+
+  dens <- lapply(seq_along(at), function(i) {
+    d <- exp(x$family$logdens(yg, .at(theta, i), .at(fx, i)))
+    d[!is.finite(d)] <- 0
+    if (max(d) > 0) d <- d / max(d)
+    d
+  })
+
+  dots <- list(...)
+  pch <- .or_else(dots$pch, 20); cx <- .or_else(dots$cex, 0.5)
+  col <- .or_else(dots$col, "#0B5D9E")
+  dots$pch <- dots$cex <- dots$col <- NULL
+  .gcall(graphics::plot,
+         list(x = xv, y = x$y, type = "n", bty = "n",
+              xlim = range(c(xv, at + w)), ylim = yl, xlab = xvar,
+              ylab = deparse(x$formula[[2L]]),
+              main = paste0("conditional densities: ", x$family$family)), dots)
+  graphics::points(xv, x$y, pch = pch, cex = cx,
+                   col = grDevices::adjustcolor("black", 0.35))
+  ## Each density is trimmed to where it has mass. Drawn over the full y
+  ## range instead, the flat tails become a full-height vertical rule at every
+  ## position, which is all the eye sees.
+  for (i in seq_along(at)) {
+    k <- which(dens[[i]] > 0.005)
+    if (!length(k)) next
+    k <- seq.int(min(k), max(k))
+    yy <- yg[k]; xx <- at[i] + w * dens[[i]][k]
+    graphics::segments(at[i], min(yy), at[i], max(yy),
+                       col = grDevices::adjustcolor("black", 0.35))
+    if (lattice)
+      graphics::segments(at[i], yy, xx, yy,
+                         col = grDevices::adjustcolor(col, 0.8), lwd = 1.5)
+    else {
+      graphics::polygon(c(rep(at[i], length(yy)), rev(xx)), c(yy, rev(yy)),
+                        col = grDevices::adjustcolor(col, 0.18), border = NA)
+      graphics::lines(xx, yy, col = col, lwd = 1.2)
+    }
+  }
+  invisible(stats::setNames(c(list(yg), dens), c("y", paste0("d", seq_along(at)))))
+}
+
+#' Fitted quantiles against one covariate
+#' @keywords internal
+.plot_quantile <- function(x, xvar, prob, se, band.col, ngrid, ...) {
+  xvar <- .resolve_xvar(x, xvar)
+  xv <- x$data[[xvar]]
+  nd <- .newdata_along(x, xvar, seq(min(xv), max(xv), length.out = ngrid))
 
   band <- se && x$family$support == "continuous"
   qq <- stats::predict(x, newdata = nd, type = "quantile", prob = prob,
@@ -183,13 +313,7 @@ plot.gamRTMB <- function(x, type = c("terms", "qq", "worm", "quantile"),
   dots <- list(...)
   pch <- .or_else(dots$pch, 20); cx <- .or_else(dots$cex, 0.5)
   dots$pch <- dots$cex <- NULL
-  ## Quantiles come in symmetric pairs, so code them by distance from the
-  ## median: same colour and line type for a pair, black and thickest for the
-  ## middle. That stays readable in greyscale as well as in colour.
-  ## rounded, or 0.05 and 0.95 fail to pair up in floating point
-  dist <- round(abs(prob - 0.5), 8)
-  lvl <- match(dist, sort(unique(dist)))
-  cols <- .or_else(dots$col, .pal(max(lvl)))[lvl]
+  cols <- .or_else(dots$col, .fan_cols(prob))
   dots$col <- NULL
   ## step curves for a lattice response, where quantiles really are steps
   ltype <- if (x$family$support == "continuous") "l" else "s"
@@ -200,17 +324,23 @@ plot.gamRTMB <- function(x, type = c("terms", "qq", "worm", "quantile"),
          list(x = xv, y = x$y, type = "n", bty = "n", ylim = yl,
               xlab = xvar, ylab = deparse(x$formula[[2L]]),
               main = paste0("fitted quantiles: ", x$family$family)), dots)
-  if (band) .band(nd[[xvar]], Q[, mid] - 2 * S[, mid], Q[, mid] + 2 * S[, mid],
-                  band.col)
   graphics::points(xv, x$y, pch = pch, cex = cx,
                    col = grDevices::adjustcolor("black", 0.4))
   for (k in seq_along(prob))
-    graphics::lines(nd[[xvar]], Q[, k], type = ltype, col = cols[k],
-                    lty = lvl[k], lwd = if (k == mid) 3 else 2)
-  graphics::legend(.empty_corner(c(xv, rep(nd[[xvar]], ncol(Q))),
-                                 c(x$y, as.vector(Q)), yl),
-                   legend = paste0(100 * prob, "%"), bty = "n", col = cols,
-                   lty = lvl, lwd = 2, cex = 0.85)
+    if (k != mid)
+      graphics::lines(nd[[xvar]], Q[, k], type = ltype, col = cols[k], lwd = 1)
+  ## the band goes over the fan and under the median line: drawn underneath, a
+  ## fine fan buries it completely
+  if (band) .band(nd[[xvar]], Q[, mid] - 2 * S[, mid], Q[, mid] + 2 * S[, mid],
+                  grDevices::adjustcolor(band.col, 0.75))
+  graphics::lines(nd[[xvar]], Q[, mid], type = ltype, col = cols[mid], lwd = 2.5)
+  ## a legend earns its place only for a handful of curves; a dense fan reads
+  ## off the fading itself
+  if (length(prob) <= 6L)
+    graphics::legend(.empty_corner(c(xv, rep(nd[[xvar]], ncol(Q))),
+                                   c(x$y, as.vector(Q)), yl),
+                     legend = paste0(100 * prob, "%"), bty = "n", col = cols,
+                     lwd = c(1, 2.5)[1 + (seq_along(prob) == mid)], cex = 0.85)
   out <- data.frame(nd[[xvar]], Q)
   names(out) <- c(xvar, colnames(Q))
   if (band) out$se.mid <- S[, mid]

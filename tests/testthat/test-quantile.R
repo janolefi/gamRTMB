@@ -134,3 +134,64 @@ test_that("shrinkage bases resolve overlapping null spaces and select terms", {
   expect_lt(e$edf[e$term == "s(noise)"], 1)
   expect_gt(e$edf[e$term == "s(x)"], 4)
 })
+
+test_that("the quantile fan uses one hue, fading outwards from a black median", {
+  pr <- seq(0.05, 0.95, by = 0.05)
+  cl <- gamRTMB:::.fan_cols(pr)
+  expect_length(cl, length(pr))
+  ## the median is black and everything else is the same hue
+  expect_identical(cl[pr == 0.5], "black")
+  hues <- unique(substr(cl[pr != 0.5], 1, 7))
+  expect_length(hues, 1L)
+  ## opacity falls away from the median, and pairs match
+  alpha <- strtoi(substr(cl[pr != 0.5], 8, 9), 16L)
+  d <- abs(pr[pr != 0.5] - 0.5)
+  expect_true(all(diff(alpha[order(d)]) <= 0))
+  expect_equal(alpha[which.min(pr[pr != 0.5])],
+               alpha[which.max(pr[pr != 0.5])])
+})
+
+test_that("a fixed argument is taken from newdata, not from the fitting data", {
+  set.seed(7); n <- 400
+  d <- data.frame(x = runif(n), trials = sample(10:40, n, TRUE))
+  d$y <- stats::rbinom(n, d$trials, stats::plogis(-0.5 + sin(2 * pi * d$x)))
+  f <- gamRTMB(y ~ list(prob = ~ s(x, k = 8)),
+               family = fam("binom", fixed = list(size = "trials")), data = d)
+  ## the same covariate, different numbers of trials: quantiles must scale
+  nd <- data.frame(x = c(0.5, 0.5), trials = c(10, 40))
+  q <- stats::predict(f, newdata = nd, type = "quantile", prob = 0.5)
+  expect_identical(dim(q), c(2L, 1L))
+  expect_gt(q[2, 1], q[1, 1])
+  expect_equal(as.numeric(q[2, 1] / q[1, 1]), 4, tolerance = 0.35)
+  ## and the resolver reads the new rows
+  expect_identical(gamRTMB:::.resolve_fixed(f$family, nd, 2L)$size, c(10, 40))
+})
+
+test_that("conditional density plots work wherever the density does", {
+  grDevices::pdf(NULL); on.exit(grDevices::dev.off(), add = TRUE)
+  data(mcycle, package = "MASS", envir = environment())
+  f <- gamRTMB(accel ~ list(mean = ~ s(times, k = 20), sd = ~ s(times, k = 12)),
+               data = mcycle)
+  r <- plot(f, type = "density")
+  expect_named(r, c("y", paste0("d", 1:5)))
+  expect_identical(length(r$y), 200L)
+  ## each density is scaled to a common width
+  expect_true(all(vapply(r[-1], max, 0) == 1))
+  expect_true(all(vapply(r[-1], function(z) all(z >= 0), TRUE)))
+  ## `at` chooses the positions
+  expect_named(plot(f, type = "density", at = c(15, 30)), c("y", "d1", "d2"))
+
+  ## the point of it: this works for a family with no quantile function
+  set.seed(1); n <- 500
+  d <- data.frame(x = runif(n))
+  d$y <- ifelse(runif(n) < 0.3, 0, stats::rpois(n, exp(1.5 + sin(2 * pi * d$x))))
+  fz <- gamRTMB(y ~ list(lambda = ~ s(x, k = 8), zeroprob = ~ 1),
+                family = fam("zipois"), data = d)
+  expect_null(fz$family$qf)
+  expect_error(plot(fz, type = "quantile"), "no quantile function")
+  expect_silent(rz <- plot(fz, type = "density"))
+  expect_named(rz, c("y", paste0("d", 1:5)))
+  ## a lattice response is evaluated on the integers
+  expect_true(all(rz$y == round(rz$y)))
+  expect_error(plot(f, type = "density", xvar = "nope"), "must name a column")
+})

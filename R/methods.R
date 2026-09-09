@@ -299,15 +299,18 @@ predict.gamRTMB <- function(object, newdata = NULL,
            fam$source, ", so quantile predictions are not available. ",
            "families() reports which families support them.")
     nn <- length(out[[1L]])
-    q <- vapply(prob, function(pr) fam$qf(rep(pr, nn), out, object$fixed),
-                numeric(nn))
+    ## a fixed argument taken from the data (binomial trials, say) belongs to
+    ## the rows being predicted, not to the rows that were fitted
+    fx <- if (is.null(newdata)) object$fixed
+          else .resolve_fixed(object$family, newdata, nn)
+    q <- vapply(prob, function(pr) fam$qf(rep(pr, nn), out, fx), numeric(nn))
     dim(q) <- c(nn, length(prob))          # vapply drops to a vector when n = 1
     dimnames(q) <- list(NULL, paste0("q", prob))
     if (!se.fit) return(q)
     if (fam$support != "continuous")
       stop("standard errors for quantiles need a continuous response; for a ",
            substr(fam$support, 1, 20), " one the quantile function is a step")
-    sq <- .quantile_se(object, prob, forms, Vj)
+    sq <- .quantile_se(object, prob, forms, Vj, fx = fx)
     dim(sq) <- dim(q); dimnames(sq) <- dimnames(q)
     return(list(fit = q, se.fit = sq))
   }
@@ -331,10 +334,12 @@ predict.gamRTMB <- function(object, newdata = NULL,
 #' @param prob Probabilities.
 #' @param forms Per-parameter linear forms from [predict.gamRTMB()].
 #' @param Vj Joint coefficient covariance from [.joint_cov()].
+#' @param fx Resolved fixed arguments for the rows being predicted.
 #' @param h Step for the central difference, on the link scale.
 #' @return A matrix of standard errors, one column per probability.
 #' @keywords internal
-.quantile_se <- function(object, prob, forms, Vj, h = 1e-4) {
+.quantile_se <- function(object, prob, forms, Vj, fx = object$fixed,
+                         h = 1e-4) {
   fam <- object$family
   pn <- object$design$parnames
   K <- length(pn); n <- length(forms[[1L]]$eta)
@@ -347,8 +352,7 @@ predict.gamRTMB <- function(object, newdata = NULL,
               forms[[l]]$L)))
 
   qat <- function(e, pr) fam$qf(rep(pr, n),
-    stats::setNames(lapply(seq_len(K), function(k) linkinv[[k]](e[[k]])), pn),
-    object$fixed)
+    stats::setNames(lapply(seq_len(K), function(k) linkinv[[k]](e[[k]])), pn), fx)
 
   vapply(prob, function(pr) {
     g <- lapply(seq_len(K), function(k) {

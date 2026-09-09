@@ -4,7 +4,7 @@
 \alias{.quantile_se}
 \title{Delta-method standard errors for fitted quantiles}
 \usage{
-.quantile_se(object, prob, forms, Vj, h = 1e-04)
+.quantile_se(object, prob, forms, Vj, fx = object$fixed, h = 1e-04)
 }
 \arguments{
 \item{object}{A \code{gamRTMB} fit.}
@@ -14,6 +14,8 @@
 \item{forms}{Per-parameter linear forms from \code{\link[=predict.gamRTMB]{predict.gamRTMB()}}.}
 
 \item{Vj}{Joint coefficient covariance from \code{\link[=.joint_cov]{.joint_cov()}}.}
+
+\item{fx}{Resolved fixed arguments for the rows being predicted.}
 
 \item{h}{Step for the central difference, on the link scale.}
 }
