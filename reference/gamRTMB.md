@@ -1,0 +1,190 @@
+# Fit a distributional GAM
+
+Smooth terms on every parameter of a distribution, fitted by combining
+mgcv's basis and penalty construction with RTMB's automatic
+differentiation and Laplace approximation, over the log-densities in
+RTMBdist.
+
+## Usage
+
+``` r
+gamRTMB(
+  formula,
+  family = fam("norm"),
+  data,
+  weights = NULL,
+  na.action = stats::na.omit,
+  knots = NULL,
+  method = c("REML", "ML"),
+  engine = c("laplace", "efs"),
+  sigma_frac = 0.2,
+  joint_precision = TRUE,
+  start = NULL,
+  silent = TRUE,
+  control = list()
+)
+
+# S3 method for class 'gamRTMB'
+nobs(object, ...)
+
+# S3 method for class 'gamRTMB'
+coef(object, ...)
+
+# S3 method for class 'gamRTMB'
+fitted(object, ...)
+```
+
+## Arguments
+
+- formula:
+
+  A two-sided formula whose right-hand side is a
+  [`list()`](https://rdrr.io/r/base/list.html) of per-parameter
+  formulas.
+
+- family:
+
+  A `gamRTMB_family`, from
+  [`fam()`](https://janolefi.github.io/gamRTMB/reference/fam.md). See
+  [`families()`](https://janolefi.github.io/gamRTMB/reference/families.md).
+
+- data:
+
+  A data frame. Every model variable must be a column of it.
+
+- weights:
+
+  Optional prior weights, evaluated in `data`. As in
+  [`stats::glm()`](https://rdrr.io/r/stats/glm.html), each observation's
+  log-density contribution is multiplied by its weight.
+
+- na.action:
+
+  How to treat missing values in any model variable;
+  [`stats::na.omit()`](https://rdrr.io/r/stats/na.fail.html) by default,
+  which drops those rows and reports how many in the fit's summary.
+
+- knots:
+
+  Passed to
+  [`mgcv::smoothCon()`](https://rdrr.io/pkg/mgcv/man/smoothCon.html).
+
+- method:
+
+  `"REML"` (default) or `"ML"`.
+
+- engine:
+
+  Fitting engine; only `"laplace"` is implemented.
+
+- sigma_frac:
+
+  Tuning constant for the variance-component starting values; see
+  [`.init_pars()`](https://janolefi.github.io/gamRTMB/reference/dot-init_pars.md).
+
+- joint_precision:
+
+  Ask
+  [`RTMB::sdreport()`](https://rdrr.io/pkg/RTMB/man/TMB-interface.html)
+  for the joint precision matrix, which
+  [`predict()`](https://rdrr.io/r/stats/predict.html) needs for standard
+  errors. On by default; turn it off to save time and memory on large
+  models where bands are not wanted.
+
+- start:
+
+  Optional named list overriding entries of the starting parameter list
+  (`beta`, `b`, `log_sigma`).
+
+- silent:
+
+  Passed to
+  [`RTMB::MakeADFun()`](https://rdrr.io/pkg/RTMB/man/TMB-interface.html).
+
+- control:
+
+  Passed to [`stats::nlminb()`](https://rdrr.io/r/stats/nlminb.html).
+
+- object:
+
+  A `gamRTMB` fit.
+
+- ...:
+
+  Ignored.
+
+## Value
+
+An object of class `gamRTMB`.
+
+## Methods (by generic)
+
+- `nobs(gamRTMB)`: Number of observations actually used.
+
+- `coef(gamRTMB)`: Coefficients, as a list of the fixed (`beta`) and
+  penalized (`b`) vectors plus the log variance components. `beta` and
+  `log_sigma` are named `parameter:term`.
+
+- `fitted(gamRTMB)`: Fitted values of every distributional parameter, on
+  the response scale.
+
+## Formula
+
+The response is the left-hand side of the outer formula and each
+distributional parameter gets a one-sided formula:
+`y ~ list(mean = ~ s(x1) + s(x2), sd = ~ s(x1))`. Parameters the family
+declares but the formula omits are given `~1`. Parameter names are the
+density's own (`xi`, `omega`, `alpha` for a skew normal), not generic
+location/scale/shape labels.
+
+## REML
+
+With `method = "REML"` the mean-structure coefficients join the random
+vector alongside the spline coefficients, so the same Laplace
+approximation integrates out both. This is the bias and stability
+correction of Wood (2011); it is not a sparsity argument, since mgcv's
+bases have global support and are dense either way. ML keeps them as
+fixed effects, which also means
+[`edf()`](https://janolefi.github.io/gamRTMB/reference/edf.md) is
+unavailable.
+
+## Engines
+
+`engine = "laplace"` hands the smoothing parameters to `nlminb` and lets
+RTMB supply the REML criterion and its gradient. `engine = "efs"` is
+reserved for an extended Fellner-Schall fit, which would avoid the
+third-derivative term in that gradient at the cost of owning its own
+inner optimisation; it is not implemented, and the seams it needs are
+documented in `dev/NOTES-fellner-schall.md`.
+
+## Supported smooths
+
+`s()`, `t2()`, `by =` variables, `bs = "fs"` and `bs = "re"` all
+reconstruct exactly through
+[`.reconstruct_map()`](https://janolefi.github.io/gamRTMB/reference/dot-reconstruct_map.md).
+`te()` is not supported, because mgcv itself declines
+`smooth2random(type = 2)` for it and directs you to `t2()`. `fx = TRUE`
+is rejected, having no penalized part. `s(..., id = )` shares one
+smoothing parameter across a group of smooths, including across
+distributional parameters.
+
+## Examples
+
+``` r
+set.seed(1)
+d <- data.frame(x1 = runif(200), x2 = runif(200))
+d$y <- rnorm(200, sin(2 * pi * d$x1), exp(-1 + d$x2))
+fit <- gamRTMB(y ~ list(mean = ~ s(x1, k = 8), sd = ~ s(x2, k = 8)),
+               data = d)
+fit
+#> gamRTMB fit
+#>   family:    norm (mean/identity, sd/log)
+#>   criterion: REML   engine: laplace
+#>   converged: TRUE   -REML: 195.2955   max|grad|: 3.48e-08
+#>   observations: 200
+#>   coefficients: 4 fixed (incl. null spaces), 12 penalized; 2 smoothing parameters
+edf(fit)
+#>   parameter  term      edf k        sp id
+#> 1      mean s(x1) 5.302736 7     0.121   
+#> 2        sd s(x2) 1.000000 7 4.246e+08   
+```

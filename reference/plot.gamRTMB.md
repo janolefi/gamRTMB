@@ -1,0 +1,154 @@
+# Plot a gamRTMB fit
+
+Plot a gamRTMB fit
+
+## Usage
+
+``` r
+# S3 method for class 'gamRTMB'
+plot(
+  x,
+  type = c("terms", "qq", "worm", "quantile"),
+  select = NULL,
+  prob = c(0.05, 0.25, 0.5, 0.75, 0.95),
+  xvar = NULL,
+  se = TRUE,
+  rug = TRUE,
+  band.col = "grey85",
+  nsim = 1,
+  ask = FALSE,
+  n = 200,
+  ...
+)
+```
+
+## Arguments
+
+- x:
+
+  A `gamRTMB` fit.
+
+- type:
+
+  `"terms"` (default), `"qq"` or `"worm"`.
+
+- select:
+
+  Which smooths to draw: an integer index, or a pattern matched against
+  the `parameter: term` labels (e.g. `"sd"` or `"s(x1)"`). Defaults to
+  all of them.
+
+- prob:
+
+  Probabilities for `type = "quantile"`.
+
+- xvar:
+
+  Covariate for the x-axis of a quantile plot. Defaults to the covariate
+  of the first smooth.
+
+- se:
+
+  Draw the interval band.
+
+- rug:
+
+  Add a rug of the observed covariate values.
+
+- band.col:
+
+  Fill for the interval band. A solid light grey by default, which
+  renders the same on every device.
+
+- nsim:
+
+  Randomisation draws to overlay in a QQ or worm plot.
+
+- ask:
+
+  Draw one panel per page, waiting between them, instead of fitting
+  everything onto one page.
+
+- n:
+
+  Grid resolution for term curves.
+
+- ...:
+
+  Passed to [`plot()`](https://rdrr.io/r/graphics/plot.default.html).
+
+## Value
+
+Invisibly, a list of the plotted data: one data frame per term for
+`type = "terms"`, or the residual quantiles for the diagnostics, so any
+panel can be rebuilt by hand.
+
+## Term plots (`type = "terms"`)
+
+One panel per smooth, showing its contribution to that distributional
+parameter's linear predictor — the scale on which terms are additive —
+with a **pointwise** \\\pm 2\\ standard error band. The band comes from
+[`vcov.gamRTMB()`](https://janolefi.github.io/gamRTMB/reference/vcov.gamRTMB.md)'s
+joint covariance, so it includes the uncertainty in the smoothing
+parameters (mgcv's `unconditional = TRUE`); it needs a fit made with
+`joint_precision = TRUE`, which is the default. Panels are titled
+`parameter: term`, since terms belong to different parameters.
+
+Only one-dimensional smooths of a numeric covariate are drawn. Tensor
+products, random effects (`bs = "re"`) and factor-smooth interactions
+(`bs = "fs"`) are reported and skipped rather than drawn misleadingly.
+
+## Quantile plots (`type = "quantile"`)
+
+Fitted quantiles of the response against one covariate, over the
+observed data. This is the picture that letting every parameter vary is
+*for*: the curves fan out and contract as the fitted spread and shape
+change, which no mean-only model can show. Other covariates are held at
+a typical value — the median for a numeric one, the modal level for a
+factor — so with more than one covariate the points and the curves do
+not condition on quite the same thing.
+
+A band is drawn for the central curve only, and only for a continuous
+response. Bands on every quantile would be unreadable, and it is the
+middle of the distribution whose estimation uncertainty one usually
+wants next to the spread the other curves already show. Note that this
+band is the central curve's own uncertainty and is not a prediction
+interval — the outer quantiles are that.
+
+## Diagnostics (`type = "qq"`, `type = "worm"`)
+
+Both use the randomised quantile residuals of
+[`residuals.gamRTMB()`](https://janolefi.github.io/gamRTMB/reference/residuals.gamRTMB.md).
+The QQ plot references the identity line, because these residuals should
+be standard normal rather than merely normal. The worm plot is its
+detrended version — deviation from the theoretical quantile against that
+quantile — which makes it much easier to see *where* a distribution is
+wrong, with the usual pointwise 95% band.
+
+For a discrete or mixed response the residuals are randomised, so a
+single panel is one realisation; `nsim > 1` overlays draws so that the
+randomisation is visible instead of hidden. For a continuous response
+the draws are identical and `nsim` has no effect.
+
+## Graphical arguments
+
+`...` is passed to the underlying
+[`plot()`](https://rdrr.io/r/graphics/plot.default.html) call, so
+`main`, `xlim`, `ylim`, `cex` and friends work as usual; `col`, `lwd`
+and `pch` are applied to the lines and points that are drawn on top.
+`bty = "n"` is the default and can be overridden like any other
+argument.
+
+## Examples
+
+``` r
+set.seed(1)
+d <- data.frame(x1 = runif(300), x2 = runif(300))
+d$y <- rnorm(300, sin(2 * pi * d$x1), exp(-1 + d$x2))
+fit <- gamRTMB(y ~ list(mean = ~ s(x1), sd = ~ s(x2)), data = d)
+plot(fit)
+
+plot(fit, select = "sd")
+
+plot(fit, type = "worm")
+```
