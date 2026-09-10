@@ -82,8 +82,13 @@ grouping.</p>
     <h2 id="identifiability">Identifiability<a class="anchor" aria-label="anchor" href="#identifiability"></a></h2>
 
 
-<p><code>smoothCon(absorb.cons = TRUE)</code> applies the sum-to-zero constraint, so
-smooths cannot collide with the intercept.</p>
+<p>A smooth must not collide with its parameter's intercept. On the
+<code>smooth2random</code> route <code>smoothCon(absorb.cons = TRUE)</code> handles that with the
+sum-to-zero constraint; on the sparse route the constraint would destroy
+the sparsity, so the term is corner-constrained instead and the intercept
+takes the level – see <code><a href="dot-null_space.html">.null_space()</a></code>. Either way the fixed-effect design
+is checked for rank at the end, since two smooths can still share a null
+space between them.</p>
     </div>
     <div class="section level2">
     <h2 id="null-spaces">Null spaces<a class="anchor" aria-label="anchor" href="#null-spaces"></a></h2>

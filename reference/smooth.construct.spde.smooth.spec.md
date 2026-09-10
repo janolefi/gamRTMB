@@ -19,11 +19,8 @@ Predict.matrix(object, data)
 - object, data, knots:
 
   As
-  [`mgcv::smooth.construct()`](https://rdrr.io/pkg/mgcv/man/smooth.construct.html).
-
-- object, data:
-
-  As
+  [`mgcv::smooth.construct()`](https://rdrr.io/pkg/mgcv/man/smooth.construct.html);
+  for `Predict.matrix`, `knots` is absent and the rest are as
   [`mgcv::Predict.matrix()`](https://rdrr.io/pkg/mgcv/man/Predict.matrix.html).
 
 ## Value

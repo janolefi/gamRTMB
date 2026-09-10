@@ -43,8 +43,14 @@ grouping.
 
 ## Identifiability
 
-`smoothCon(absorb.cons = TRUE)` applies the sum-to-zero constraint, so
-smooths cannot collide with the intercept.
+A smooth must not collide with its parameter's intercept. On the
+`smooth2random` route `smoothCon(absorb.cons = TRUE)` handles that with
+the sum-to-zero constraint; on the sparse route the constraint would
+destroy the sparsity, so the term is corner-constrained instead and the
+intercept takes the level – see
+[`.null_space()`](https://janolefi.github.io/gamRTMB/reference/dot-null_space.md).
+Either way the fixed-effect design is checked for rank at the end, since
+two smooths can still share a null space between them.
 
 ## Null spaces
 
