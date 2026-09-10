@@ -18,6 +18,8 @@ gamRTMB(
   engine = c("laplace", "efs"),
   sigma_frac = 0.05,
   sparse = c("auto", "never", "always"),
+  inner_method = c("newton", "BFGS"),
+  inner_control = list(),
   joint_precision = TRUE,
   start = NULL,
   silent = TRUE,
@@ -66,6 +68,16 @@ most 20\% nonzero, and sends everything else through
 \code{\link[mgcv:smooth2random]{mgcv::smooth2random()}} as usual. \code{"never"} is the old behaviour;
 \code{"always"} takes the sparse route for every single-penalty smooth, which
 is mainly useful for checking that the two agree. See \code{\link[=.gmrf_block]{.gmrf_block()}}.}
+
+\item{inner_method}{Experimental. \code{"newton"} (default) uses RTMB's own
+Newton solver for the inner problem, forming the Hessian at every step.
+\code{"BFGS"} uses \code{\link[stats:optim]{stats::optim()}} on the gradient alone. That was worth
+testing on dense problems and it does not pay: it is no faster, and TMB's
+warm starts make it converge to the wrong answer. It warns, and is kept
+only so the measurement can be repeated. See \code{\link[=.set_inner]{.set_inner()}}.}
+
+\item{inner_control}{Overrides for the inner optimiser's control list --
+\code{maxit} and \code{reltol} for \code{"BFGS"}, TMB's own \code{newton} settings otherwise.}
 
 \item{joint_precision}{Ask \code{\link[RTMB:TMB-interface]{RTMB::sdreport()}} for the joint precision
 matrix, which \code{\link[=predict]{predict()}} needs for standard errors. On by default; turn

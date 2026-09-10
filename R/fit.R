@@ -233,6 +233,14 @@
 #'   linear-predictor scale. See [.init_pars()]. Raise it if a fit converges
 #'   to an over-smooth solution, lower it if the objective is not finite at
 #'   the starting values.
+#' @param inner_method Experimental. `"newton"` (default) uses RTMB's own
+#'   Newton solver for the inner problem, forming the Hessian at every step.
+#'   `"BFGS"` uses [stats::optim()] on the gradient alone. That was worth
+#'   testing on dense problems and it does not pay: it is no faster, and TMB's
+#'   warm starts make it converge to the wrong answer. It warns, and is kept
+#'   only so the measurement can be repeated. See [.set_inner()].
+#' @param inner_control Overrides for the inner optimiser's control list --
+#'   `maxit` and `reltol` for `"BFGS"`, TMB's own `newton` settings otherwise.
 #' @param sparse How to treat a smooth whose single penalty is already sparse
 #'   -- a Markov random field, a random walk, a supplied GMRF precision.
 #'   `"auto"` (default) keeps the penalty and gives the block a
@@ -264,11 +272,13 @@ gamRTMB <- function(formula, family = fam("norm"), data, weights = NULL,
                     method = c("REML", "ML"),
                     engine = c("laplace", "efs"), sigma_frac = 0.05,
                     sparse = c("auto", "never", "always"),
+                    inner_method = c("newton", "BFGS"), inner_control = list(),
                     joint_precision = TRUE, start = NULL, silent = TRUE,
                     control = list()) {
   method <- match.arg(method)
   engine <- match.arg(engine)
   sparse <- match.arg(sparse)
+  inner_method <- match.arg(inner_method)
   if (!inherits(family, "gamRTMB_family"))
     stop("`family` must be a gamRTMB_family, e.g. fam(\"norm\") or ",
          "fam(\"gamma2\"); see families()")
@@ -287,7 +297,7 @@ gamRTMB <- function(formula, family = fam("norm"), data, weights = NULL,
 
   fit <- switch(engine,
     laplace = .fit_laplace(nll, pars, design, method, joint_precision, silent,
-                           control, family),
+                           control, family, inner_method, inner_control),
     efs     = .fit_efs(nll, pars, design, method, family))
 
   fit$family <- family
@@ -305,6 +315,93 @@ gamRTMB <- function(formula, family = fam("norm"), data, weights = NULL,
   structure(fit, class = "gamRTMB")
 }
 
+#' Switch the inner optimiser (experimental)
+#'
+#' RTMB solves the inner problem -- maximising over the coefficients at fixed
+#' smoothing parameters -- with its own Newton iteration, forming and
+#' factorising the Hessian at every step. The idea worth testing is that when
+#' that Hessian is dense each step costs \eqn{O(p^3)}, so a quasi-Newton
+#' method that only ever asks for the gradient might get there sooner even
+#' though it takes many more steps. `"BFGS"` hands the inner problem to
+#' [stats::optim()] through TMB's `inner.method` hook.
+#'
+#' It was tested, and it does not work. Both halves of the idea fail, and the
+#' numbers are recorded here so that nobody has to find out twice.
+#'
+#' @section It is not faster:
+#' On dense inner problems solved from a cold start, where BFGS reaches the
+#' same mode as Newton to 3e-05, the two cost the same:
+#'
+#' \tabular{rrrr}{
+#'   dimension \tab newton \tab BFGS \tab ratio \cr
+#'    65 \tab  0.155 s \tab  0.157 s \tab 0.99x \cr
+#'   145 \tab  1.645 s \tab  1.613 s \tab 1.02x \cr
+#'   257 \tab 10.982 s \tab 10.630 s \tab 1.03x
+#' }
+#'
+#' The saving per step is real but the step count rises to match it, and the
+#' Laplace approximation needs the Hessian's log determinant and the outer
+#' gradient needs third derivatives, so the dense factorisation happens once
+#' an outer iteration either way.
+#'
+#' @section It is not stable:
+#' Worse, and the reason this is off by default. TMB warm-starts each inner
+#' solve from the previous one, which is what makes the outer loop affordable.
+#' Newton re-converges from anywhere; `optim` does not. Walking a path of
+#' eight smoothing parameters and comparing each marginal objective against a
+#' freshly started Newton solve at the same point:
+#'
+#' \tabular{rrrr}{
+#'   theta \tab newton \tab BFGS \tab error \cr
+#'   -1.50 \tab 708.03 \tab 708.03 \tab  0.00 \cr
+#'   -0.84 \tab 530.45 \tab 549.10 \tab 18.65 \cr
+#'   -0.19 \tab 458.80 \tab 495.12 \tab 36.32 \cr
+#'    0.80 \tab 440.75 \tab 498.94 \tab 58.19
+#' }
+#'
+#' The error compounds along the path, because each warm start begins from the
+#' previous drifted point. Calling the same point six times running returns
+#' the same wrong value to six decimals, so `optim` is stopping at once rather
+#' than iterating and falling short, and no setting of `reltol`, `abstol` or
+#' `maxit` changes any of these numbers. The outer optimiser is then
+#' minimising a criterion that is wrong by tens of nats and converges,
+#' reporting success, at a point where the true REML gradient is `(-9.4,
+#' -13.7)`.
+#'
+#' [RTMB::sdreport()] notices too, and cannot report standard deviations for
+#' the random effects at all.
+#'
+#' So the option stays, because being able to try it is worth something and
+#' the conclusion may not hold for every model, but it warns, and a fit made
+#' with it should be checked against `"newton"` before it is believed.
+#'
+#' @param obj A `MakeADFun` object.
+#' @param method `"newton"` or `"BFGS"`.
+#' @param inner_control Overrides for the inner optimiser's control list.
+#' @param silent From [gamRTMB()]; `FALSE` turns on the inner trace.
+#' @param control The user's outer `nlminb` control list.
+#' @return The outer control list to use.
+#' @keywords internal
+.set_inner <- function(obj, method, inner_control, silent, control) {
+  if (identical(method, "BFGS")) {
+    ic <- utils::modifyList(list(maxit = 1e4, reltol = 1e-10), inner_control)
+    if (!silent) ic$trace <- 1
+    obj$env$inner.method <- "BFGS"
+    obj$env$inner.control <- ic
+    warning("inner_method = \"BFGS\" is experimental and measures badly: on ",
+            "the models tested it was no faster than the default Newton ",
+            "solver, and because TMB warm-starts each inner solve, optim ",
+            "stops short of the mode and the error compounds along the outer ",
+            "path -- by tens of nats, with no setting of reltol or maxit ",
+            "changing it. Compare against inner_method = \"newton\" before ",
+            "believing this fit. See ?.set_inner.", call. = FALSE)
+  } else if (length(inner_control)) {
+    obj$env$inner.control <- utils::modifyList(obj$env$inner.control,
+                                               inner_control)
+  }
+  utils::modifyList(list(eval.max = 2000, iter.max = 1000), control)
+}
+
 #' Laplace engine
 #'
 #' Declares the coefficients random so that RTMB supplies the marginal
@@ -318,12 +415,14 @@ gamRTMB <- function(formula, family = fam("norm"), data, weights = NULL,
 #'
 #' @keywords internal
 .fit_laplace <- function(nll, pars, design, method, joint_precision, silent,
-                          control, family) {
+                          control, family, inner_method = "newton",
+                          inner_control = list()) {
   random <- if (method == "REML") c("beta", "b") else "b"
   map <- if (design$nsigma_free < design$nsigma)
     list(log_sigma = design$sig_group) else list()
 
   obj <- RTMB::MakeADFun(nll, pars, random = random, map = map, silent = silent)
+  ctl <- .set_inner(obj, inner_method, inner_control, silent, control)
 
   ## start diagnostics, on the joint objective rather than the marginal one
   pfull <- obj$env$par
@@ -358,7 +457,7 @@ gamRTMB <- function(formula, family = fam("norm"), data, weights = NULL,
 
   ## With no smooths at all there is nothing for the outer optimiser to do:
   ## every coefficient is already handled by the inner Laplace problem.
-  ctl <- utils::modifyList(list(eval.max = 2000, iter.max = 1000), control)
+
   ## nlminb warns whenever its line search probes a point where the objective
   ## is not finite, which is routine and self-correcting: it backtracks and
   ## carries on. Whether the fit actually worked is reported by `convergence`

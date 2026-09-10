@@ -118,3 +118,24 @@ test_that("a non-finite gradient is diagnosed, not passed to the optimiser", {
   expect_true(fit$convergence)
   expect_gt(stats::cor(stats::predict(fit)$mean, 1 + sin(2 * pi * d$x)), 0.9)
 })
+
+test_that("the inner method can be switched, and says it is experimental", {
+  set.seed(1)
+  d <- data.frame(x = stats::runif(300))
+  d$y <- stats::rnorm(300, sin(2 * pi * d$x), 0.3)
+  f <- y ~ list(mean = ~ s(x, k = 10), sd = ~ 1)
+  ## BFGS also leaves sdreport unable to report the random effects' standard
+  ## deviations, which is one more symptom of the same warm-start problem.
+  withr::local_options(warn = -1)
+  expect_warning(b <- gamRTMB(f, data = d, inner_method = "BFGS"),
+                 "experimental")
+  expect_s3_class(b, "gamRTMB")
+  expect_equal(b$obj$env$inner.method, "BFGS")
+  expect_equal(b$obj$env$inner.control$maxit, 1e4)
+  ## overrides reach optim, and the default route is untouched
+  expect_warning(b2 <- gamRTMB(f, data = d, inner_method = "BFGS",
+                               inner_control = list(reltol = 1e-14)))
+  expect_equal(b2$obj$env$inner.control$reltol, 1e-14)
+  n <- gamRTMB(f, data = d)
+  expect_false(identical(n$obj$env$inner.method, "BFGS"))
+})

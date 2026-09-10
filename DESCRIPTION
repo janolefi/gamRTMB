@@ -25,6 +25,7 @@ LazyData: true
 URL: https://github.com/janolefi/gamRTMB, https://janolefi.github.io/gamRTMB/
 BugReports: https://github.com/janolefi/gamRTMB/issues
 Suggests: 
+    withr,
     fmesher,
     testthat (>= 3.0.0),
     knitr,
