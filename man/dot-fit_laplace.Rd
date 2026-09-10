@@ -12,9 +12,7 @@
   joint_precision,
   silent,
   control,
-  family,
-  inner_method = "newton",
-  inner_control = list()
+  family
 )
 }
 \description{
