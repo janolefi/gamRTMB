@@ -71,7 +71,9 @@
 #' constraint is imposed, as in INLA. It is not centred, and its overall level
 #' is only weakly separated from the intercept when the range is large.
 #'
-#' @param object,data,knots As [mgcv::smooth.construct()].
+#' @param object,data,knots As [mgcv::smooth.construct()]; for
+#'   `Predict.matrix`, `knots` is absent and the rest are as
+#'   [mgcv::Predict.matrix()].
 #' @return A `smoothCon` object of class `spde.smooth`, with sparse `X` and
 #'   sparse penalties.
 #' @references
@@ -153,7 +155,6 @@ smooth.construct.spde.smooth.spec <- function(object, data, knots) {
   object
 }
 
-#' @param object,data As [mgcv::Predict.matrix()].
 #' @rdname smooth.construct.spde.smooth.spec
 #' @exportS3Method mgcv::Predict.matrix
 Predict.matrix.spde.smooth <- function(object, data)

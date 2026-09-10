@@ -380,23 +380,23 @@ plot.gamRTMB <- function(x, type = c("terms", "qq", "worm", "quantile",
                                   label = paste0(p, ": ", s$label))
   }
   if (!length(tl)) stop("the model has no smooth terms to plot")
+  labs <- function(z) vapply(z, `[[`, "", "label")
 
   if (!is.null(select)) {
     keep <- if (is.numeric(select)) {
       if (any(select < 1 | select > length(tl)))
         stop("`select` must index the ", length(tl), " smooth terms")
       as.integer(select)
-    } else grep(select, vapply(tl, `[[`, "", "label"), fixed = FALSE)
+    } else grep(select, labs(tl), fixed = FALSE)
     if (!length(keep))
-      stop("`select` matched none of: ",
-           paste(vapply(tl, `[[`, "", "label"), collapse = ", "))
+      stop("`select` matched none of: ", paste(labs(tl), collapse = ", "))
     tl <- tl[keep]
   }
 
   drawable <- !vapply(tl, function(t) is.null(t$s$plot1d), TRUE)
   if (any(!drawable))
     message("not drawable as a single curve, skipped: ",
-            paste(vapply(tl[!drawable], `[[`, "", "label"), collapse = ", "))
+            paste(labs(tl[!drawable]), collapse = ", "))
   tl <- tl[drawable]
   if (!length(tl)) stop("no one-dimensional smooth terms left to plot")
 
@@ -420,7 +420,7 @@ plot.gamRTMB <- function(x, type = c("terms", "qq", "worm", "quantile",
     }
     data.frame(x = xg, fit = as.vector(sp$Z %*% sp$coef), se = sef)
   })
-  names(curves) <- vapply(tl, `[[`, "", "label")
+  names(curves) <- labs(tl)
 
   ## one page by default; `ask` steps through instead. Either way the
   ## caller's device settings are put back.

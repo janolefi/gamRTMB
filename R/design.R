@@ -177,8 +177,13 @@
 #' Build the design for every distributional parameter
 #'
 #' @section Identifiability:
-#' `smoothCon(absorb.cons = TRUE)` applies the sum-to-zero constraint, so
-#' smooths cannot collide with the intercept.
+#' A smooth must not collide with its parameter's intercept. On the
+#' `smooth2random` route `smoothCon(absorb.cons = TRUE)` handles that with the
+#' sum-to-zero constraint; on the sparse route the constraint would destroy
+#' the sparsity, so the term is corner-constrained instead and the intercept
+#' takes the level -- see [.null_space()]. Either way the fixed-effect design
+#' is checked for rank at the end, since two smooths can still share a null
+#' space between them.
 #'
 #' @section Null spaces:
 #' Only the penalized blocks become random effects. The unpenalized
@@ -276,33 +281,27 @@
                         n = n, dataX = data, null.space.penalty = FALSE)
       }
       ## The sparse route needs the penalty as the basis constructor wrote
-      ## it, so the term is built unconstrained first and only rebuilt with
-      ## the constraint absorbed if it turns out not to qualify. Absorbing
-      ## the constraint is what would densify the penalty, so there is no
-      ## way to make this decision from the constrained object.
-      scl <- build(sparse == "never")
-      if (sparse == "never" && !is.null(scl[[1L]]$L))
+      ## it, so unless it is switched off the term is built unconstrained
+      ## first and rebuilt with the constraint absorbed only if it turns out
+      ## not to qualify. Absorbing the constraint is what densifies the
+      ## penalty, so there is no way to decide from the constrained object.
+      try_sparse <- sparse != "never"
+      scl <- build(!try_sparse)
+      use_sp <- try_sparse && .use_sparse(scl[[1L]], sparse)
+      if (!use_sp && !is.null(scl[[1L]]$L))
         stop("the smooth ", sQuote(scl[[1L]]$label), " combines several ",
              "penalty matrices through an `L` matrix, which mgcv::",
              "smooth2random() cannot represent. It needs sparse != \"never\".",
              call. = FALSE)
-      use_sp <- sparse != "never" && .use_sparse(scl[[1L]], sparse)
-      if (!use_sp && sparse != "never") scl <- build(TRUE)
+      if (try_sparse && !use_sp) scl <- build(TRUE)
       for (sm in scl) {
         if (isTRUE(sm$fixed))
           stop("fx = TRUE smooths are not supported: there is no penalized ",
                "part to make random")
-        B <- if (use_sp) .gmrf_block(sm) else {
-          re <- mgcv::smooth2random(sm, "", type = 2)
-          list(Xr = lapply(re$rand, as.matrix), Xf = re$Xf,
-               Tmap = .reconstruct_map(re), intrinsic = FALSE,
-               spec = rep(list(list(kind = "iid", ntheta = 1L,
-                                    theta_names = "sd")), length(re$rand)))
-        }
+        B <- if (use_sp) .gmrf_block(sm) else .iid_block(sm)
         smooths[[length(smooths) + 1L]] <- list(
           sm = sm, Tmap = B$Tmap, label = sm$label, id = idv,
-          Xr = B$Xr, Xf = B$Xf, spec = B$spec,
-          sparse = use_sp, intrinsic = B$intrinsic,
+          Xr = B$Xr, Xf = B$Xf, spec = B$spec, intrinsic = B$intrinsic,
           plot1d = .plot_spec(sm, data))
       }
     }
@@ -361,6 +360,21 @@
     par_blocks[[p]] <- ids_p
   }
 
+  ## Two ways a parameter's mean structure can fail to be identified, both
+  ## caught here where the cause is still visible rather than later as a
+  ## puzzling remark about the response.
+  ##
+  ## Overlapping unpenalized null spaces make the fixed-effect design rank
+  ## deficient. A smooth's null space is a low-order polynomial in its own
+  ## covariate, so `x + s(x)` fits the x main effect twice; a tensor product
+  ## carries main effects for each margin, so `t2(x, z) + s(z)` does too; and
+  ## a by-factor smooth carries one per level, so `s(x) + s(x, by = g)` does
+  ## as well. mgcv tolerates this because its fitted values stay identifiable
+  ## even when the individual coefficients do not. Here it is fatal: a flat
+  ## direction in the coefficients makes the penalized Hessian singular, so
+  ## the Laplace approximation's log determinant is undefined and the
+  ## objective comes back non-finite.
+  ##
   ## A corner-constrained intrinsic field pins one coefficient per connected
   ## component at zero instead of centring the whole term, so the level it
   ## gives up has to land somewhere. With an intercept that is exactly what
@@ -368,41 +382,23 @@
   ## the constraint silently forces the dropped region's effect to zero, which
   ## is a different model and not the one anybody meant.
   for (p in parnames) {
-    if (!any(vapply(parts[[p]]$smooths, function(s) isTRUE(s$intrinsic), NA)))
-      next
-    if (!"(Intercept)" %in% colnames(parts[[p]]$Xpara))
-      stop("'", p, "' has an intrinsic GMRF smooth but no intercept. Such a ",
-           "term is identified only up to a constant per connected component, ",
-           "which the intercept absorbs; without one, the constraint would ",
-           "pin one region's effect at zero instead. Add an intercept, or fit ",
-           "this term with sparse = \"never\".", call. = FALSE)
-  }
-
-  ## Overlapping unpenalized null spaces make the fixed-effect design rank
-  ## deficient. A smooth's null space is a low-order polynomial in its own
-  ## covariate, so `x + s(x)` fits the x main effect twice; a tensor product
-  ## carries main effects for each margin, so `t2(x, z) + s(z)` does too; and
-  ## a by-factor smooth carries one per level, so `s(x) + s(x, by = g)` does
-  ## as well.
-  ##
-  ## mgcv tolerates this because its fitted values stay identifiable even
-  ## when the individual coefficients do not. Here it is fatal rather than
-  ## untidy: a flat direction in the coefficients makes the penalized Hessian
-  ## singular, so the Laplace approximation's log-determinant is undefined and
-  ## the objective comes back non-finite. Caught here, where the cause is
-  ## still visible, rather than as a puzzling remark about the response.
-  for (p in parnames) {
     X <- Xfix[[p]]
-    if (ncol(X) > 1L && qr(X)$rank < ncol(X)) {
-      lab <- attr(beta_idx[[p]], "labels")
+    if (ncol(X) > 1L && qr(X)$rank < ncol(X))
       stop("the fixed-effect design for '", p, "' is rank deficient, so the ",
-           "model is not identified: ", paste(lab, collapse = ", "), ".\n",
+           "model is not identified: ",
+           paste(attr(beta_idx[[p]], "labels"), collapse = ", "), ".\n",
            "Two smooths (or a smooth and a parametric term) share an ",
            "unpenalized null space. Drop the duplicate: `x + s(x)` should be ",
            "just `s(x)`, `t2(x, z) + s(z)` just `t2(x, z)`, and ",
            "`s(x) + s(x, by = g)` is better written `s(x, g, bs = \"fs\")`, ",
            "which is fully penalized and needs no separate main effect.")
-    }
+    if (any(vapply(parts[[p]]$smooths, function(s) isTRUE(s$intrinsic), NA)) &&
+        !"(Intercept)" %in% colnames(parts[[p]]$Xpara))
+      stop("'", p, "' has an intrinsic GMRF smooth but no intercept. Such a ",
+           "term is identified only up to a constant per connected component, ",
+           "which the intercept absorbs; without one, the constraint would ",
+           "pin one region's effect at zero instead. Add an intercept, or fit ",
+           "this term with sparse = \"never\".", call. = FALSE)
   }
 
   ## The grouping runs over entries of the parameter vector rather than over

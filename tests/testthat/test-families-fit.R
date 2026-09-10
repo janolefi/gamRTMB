@@ -3,7 +3,7 @@
 ## NOTE: RTMBdist's rzipois (and eight other zero/one-inflated r* functions)
 ## does not subset its shape parameters when drawing the non-inflated part, so
 ## a per-observation lambda is misaligned with its observation. Simulated
-## locally here; see dev/demo-families.R.
+## locally here.
 
 skip_slow <- function() testthat::skip_on_cran()
 

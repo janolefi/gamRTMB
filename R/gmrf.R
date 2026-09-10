@@ -187,6 +187,23 @@
                         theta_names = "sd")))
 }
 
+#' Build an iid block from a smooth, the `smooth2random` way
+#'
+#' The other half of [.gmrf_block()], with the same shape of answer, so that
+#' [.build_design()] can pick a route and then stop caring which it picked.
+#' Here the reparameterisation makes the penalty the identity, so the block
+#' needs no precision matrix and exactly one variance.
+#'
+#' @param sm A `smoothCon` object built with `absorb.cons = TRUE`.
+#' @keywords internal
+.iid_block <- function(sm) {
+  re <- mgcv::smooth2random(sm, "", type = 2)
+  list(Xr = lapply(re$rand, as.matrix), Xf = re$Xf,
+       Tmap = .reconstruct_map(re), intrinsic = FALSE,
+       spec = rep(list(list(kind = "iid", ntheta = 1L, theta_names = "sd")),
+                  length(re$rand)))
+}
+
 #' A penalized block's precision matrix, at given parameters
 #'
 #' The one place that knows how a block's parameters become a precision, so

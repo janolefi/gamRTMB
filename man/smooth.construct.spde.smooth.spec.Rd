@@ -10,9 +10,9 @@
 \method{Predict.matrix}{spde.smooth}(object, data)
 }
 \arguments{
-\item{object, data, knots}{As \code{\link[mgcv:smooth.construct]{mgcv::smooth.construct()}}.}
-
-\item{object, data}{As \code{\link[mgcv:Predict.matrix]{mgcv::Predict.matrix()}}.}
+\item{object, data, knots}{As \code{\link[mgcv:smooth.construct]{mgcv::smooth.construct()}}; for
+\code{Predict.matrix}, \code{knots} is absent and the rest are as
+\code{\link[mgcv:Predict.matrix]{mgcv::Predict.matrix()}}.}
 }
 \value{
 A \code{smoothCon} object of class \code{spde.smooth}, with sparse \code{X} and

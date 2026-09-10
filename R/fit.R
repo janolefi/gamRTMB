@@ -189,7 +189,7 @@
 #' An intrinsic field is corner-constrained rather than sum-to-zero
 #' constrained, since the latter is what destroys the sparsity. The two are
 #' equivalent up to a constant absorbed by the intercept, so such a term needs
-#' its parameter to have one. See [.null_space_drop()].
+#' its parameter to have one. See [.null_space()].
 #'
 #' @section REML:
 #' With `method = "REML"` the mean-structure coefficients join the random

@@ -127,7 +127,7 @@ model at a fraction of the cost. The \code{sparse} argument controls this.
 An intrinsic field is corner-constrained rather than sum-to-zero
 constrained, since the latter is what destroys the sparsity. The two are
 equivalent up to a constant absorbed by the intercept, so such a term needs
-its parameter to have one. See \code{\link[=.null_space_drop]{.null_space_drop()}}.
+its parameter to have one. See \code{\link[=.null_space]{.null_space()}}.
 }
 
 \section{REML}{
