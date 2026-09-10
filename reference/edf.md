@@ -4,13 +4,16 @@ TMB does not hand these over the way mgcv's PIRLS does, so they are
 derived explicitly. At the fitted smoothing parameters the penalized
 Hessian of the joint negative log-likelihood in the coefficients is
 \$\$H = H\_{data} + S, \quad S = diag(0 \text{ for fixed}, 1/\sigma_k^2
-\text{ for block } k),\$\$ the penalty being exactly diagonal in the
+\text{ for block } k),\$\$ with \\S\\ block diagonal – \\\sigma_k^{-2}
+I\\ in the
 [`mgcv::smooth2random()`](https://rdrr.io/pkg/mgcv/man/smooth2random.html)
-basis. Wood's effective degrees of freedom, \\tr((X'WX + S)^{-1}
+basis, \\\sigma_k^{-2} Q_k\\ for a block that kept its own sparse
+penalty. Wood's effective degrees of freedom, \\tr((X'WX + S)^{-1}
 X'WX)\\, therefore generalise to \$\$F = H^{-1} H\_{data} = I - H^{-1}
-S, \quad edf_j = 1 - s_j \[H^{-1}\]\_{jj},\$\$ so only the diagonal of
-\\H^{-1}\\ is needed: null-space coefficients contribute exactly 1 and
-penalized ones between 0 and 1.
+S, \quad edf_j = 1 - \[H^{-1} S\]\_{jj},\$\$ so only the diagonal of
+\\H^{-1} S\\ is needed, and that comes from a sparse solve rather than a
+full inverse. Null-space coefficients contribute exactly 1 and penalized
+ones between 0 and 1.
 
 ## Usage
 

@@ -11,6 +11,7 @@
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-build_design.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-classify.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-clone_spec.html</loc></url>
+<url><loc>https://janolefi.github.io/gamRTMB/reference/dot-components.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-empty_corner.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-family_overrides.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-fan_cols.html</loc></url>
@@ -20,6 +21,7 @@
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-fit_laplace.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-flat_start.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-gcall.html</loc></url>
+<url><loc>https://janolefi.github.io/gamRTMB/reference/dot-gmrf_block.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-init_pars.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-joint_cov.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-lattice_families.html</loc></url>
@@ -27,10 +29,12 @@
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-make_nll.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-model_data.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-newdata_along.html</loc></url>
+<url><loc>https://janolefi.github.io/gamRTMB/reference/dot-null_space.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-pal.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-panel_grid.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-parse_formula.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-penalized_hessian.html</loc></url>
+<url><loc>https://janolefi.github.io/gamRTMB/reference/dot-penalty_matrix.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-pit.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-plot_density.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-plot_quantile.html</loc></url>
@@ -43,6 +47,7 @@
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-resolve_xvar.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-smooth_idx.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-smooth_part.html</loc></url>
+<url><loc>https://janolefi.github.io/gamRTMB/reference/dot-use_sparse.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/edf.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/fam.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/families.html</loc></url>

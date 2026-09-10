@@ -51,8 +51,8 @@ data.frame(
   check.names = FALSE
 )
 #>       fit seconds  edf -2logL    AIC
-#> 1  gamlss    0.25 7.68 4785.7 4801.1
-#> 2 gamRTMB    0.87 7.63 4786.0 4801.2
+#> 1  gamlss    0.15 7.68 4785.7 4801.1
+#> 2 gamRTMB    0.44 7.63 4786.0 4801.2
 ```
 
 Nearly identical: 7.68 against 7.63 effective degrees of freedom, and
@@ -94,8 +94,8 @@ data.frame(
   AIC     = round(c(AIC(m2), AIC(f2)), 1)
 )
 #>       fit seconds  edf     AIC
-#> 1  gamlss    0.66 9.11 28061.6
-#> 2 gamRTMB    1.07 8.74 28062.9
+#> 1  gamlss    0.43 9.11 28061.6
+#> 2 gamRTMB    0.47 8.74 28062.9
 
 p2 <- predict(f2, type = "response")
 c(mean = cor(fitted(m2, "mu"), p2$mean),
@@ -133,8 +133,8 @@ data.frame(
   AIC     = round(c(AIC(m3), AIC(f3)), 1)
 )
 #>       fit seconds   edf    AIC
-#> 1  gamlss    0.77 11.76 4794.5
-#> 2 gamRTMB    3.18 15.01 4803.5
+#> 1  gamlss    0.44 11.76 4794.5
+#> 2 gamRTMB    1.51 15.01 4803.5
 ```
 
 Here the two part company a little. The fitted curves still agree —
@@ -292,9 +292,9 @@ res <- t(vapply(sizes, function(n) {
 }, c(gamlss = 0, gamRTMB = 0)))
 data.frame(n = sizes, round(res, 2))
 #>      n gamlss gamRTMB
-#> 1  500   0.80    1.03
-#> 2 2000   0.75    2.63
-#> 3 7294   5.31    6.49
+#> 1  500   0.68    0.42
+#> 2 2000   0.41    1.19
+#> 3 7294   3.75    3.32
 ```
 
 Neither dominates. Both stay within about a factor of two of each other

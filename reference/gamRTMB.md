@@ -18,6 +18,7 @@ gamRTMB(
   method = c("REML", "ML"),
   engine = c("laplace", "efs"),
   sigma_frac = 0.05,
+  sparse = c("auto", "never", "always"),
   joint_precision = TRUE,
   start = NULL,
   silent = TRUE,
@@ -86,6 +87,20 @@ fitted(object, ...)
   Raise it if a fit converges to an over-smooth solution, lower it if
   the objective is not finite at the starting values.
 
+- sparse:
+
+  How to treat a smooth whose single penalty is already sparse – a
+  Markov random field, a random walk, a supplied GMRF precision.
+  `"auto"` (default) keeps the penalty and gives the block a
+  [`RTMB::dgmrf()`](https://rdrr.io/pkg/RTMB/man/MVgauss.html) prior
+  when it has at least 50 coefficients and is at most 20% nonzero, and
+  sends everything else through
+  [`mgcv::smooth2random()`](https://rdrr.io/pkg/mgcv/man/smooth2random.html)
+  as usual. `"never"` is the old behaviour; `"always"` takes the sparse
+  route for every single-penalty smooth, which is mainly useful for
+  checking that the two agree. See
+  [`.gmrf_block()`](https://janolefi.github.io/gamRTMB/reference/dot-gmrf_block.md).
+
 - joint_precision:
 
   Ask
@@ -140,6 +155,23 @@ distributional parameter gets a one-sided formula:
 declares but the formula omits are given `~1`. Parameter names are the
 density's own (`xi`, `omega`, `alpha` for a skew normal), not generic
 location/scale/shape labels.
+
+## Sparse penalties
+
+A smooth whose penalty is a sparse precision matrix – `bs = "mrf"` over
+an adjacency graph, a random walk, or any precision supplied through
+`xt = list(penalty = )` – can skip
+[`mgcv::smooth2random()`](https://rdrr.io/pkg/mgcv/man/smooth2random.html).
+That rotation makes the coefficients iid, which is convenient but fills
+the penalty in completely; keeping it instead and giving the block an
+\\N(0, \sigma^2 Q^{-1})\\ prior through
+[`RTMB::dgmrf()`](https://rdrr.io/pkg/RTMB/man/MVgauss.html) is the same
+model at a fraction of the cost. The `sparse` argument controls this.
+
+An intrinsic field is corner-constrained rather than sum-to-zero
+constrained, since the latter is what destroys the sparsity. The two are
+equivalent up to a constant absorbed by the intercept, so such a term
+needs its parameter to have one. See `.null_space_drop()`.
 
 ## REML
 

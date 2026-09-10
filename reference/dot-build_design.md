@@ -5,7 +5,7 @@ Build the design for every distributional parameter
 ## Usage
 
 ``` r
-.build_design(par_formulas, data, parnames, knots = NULL)
+.build_design(par_formulas, data, parnames, knots = NULL, sparse = "auto")
 ```
 
 ## Arguments
@@ -26,6 +26,13 @@ Build the design for every distributional parameter
 
   Passed to
   [`mgcv::smoothCon()`](https://rdrr.io/pkg/mgcv/man/smoothCon.html).
+
+- sparse:
+
+  Whether a smooth with a single sparse penalty may skip
+  [`mgcv::smooth2random()`](https://rdrr.io/pkg/mgcv/man/smooth2random.html)
+  and keep that penalty; see
+  [`.gmrf_block()`](https://janolefi.github.io/gamRTMB/reference/dot-gmrf_block.md).
 
 ## Value
 

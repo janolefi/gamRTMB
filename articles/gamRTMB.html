@@ -217,17 +217,12 @@ the tails, with <code>nu = 2</code> being exactly Gaussian:</p>
 <span>                               sigma <span class="op">=</span> <span class="op">~</span> <span class="fu">s</span><span class="op">(</span><span class="va">times</span>, k <span class="op">=</span> <span class="fl">12</span><span class="op">)</span>,</span>
 <span>                               nu <span class="op">=</span> <span class="op">~</span> <span class="fl">1</span><span class="op">)</span>,</span>
 <span>                  family <span class="op">=</span> <span class="fu"><a href="../reference/fam.html">fam</a></span><span class="op">(</span><span class="st">"powerexp2"</span><span class="op">)</span>, data <span class="op">=</span> <span class="va">mcycle</span><span class="op">)</span></span>
-<span><span class="co">#&gt; Warning: the outer optimiser stopped early: NA/NaN gradient evaluation. The</span></span>
-<span><span class="co">#&gt; best point reached is returned, but the fit has not converged -- check</span></span>
-<span><span class="co">#&gt; `fit$convergence`, and treat the smoothing parameters and any standard errors</span></span>
-<span><span class="co">#&gt; with suspicion. This usually means a smoothing parameter ran into a region</span></span>
-<span><span class="co">#&gt; where family 'powerexp2' cannot be differentiated.</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>nu <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">exp</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/coef.html" class="external-link">coef</a></span><span class="op">(</span><span class="va">fit_pe</span><span class="op">)</span><span class="op">$</span><span class="va">beta</span><span class="op">[[</span><span class="st">"nu:(Intercept)"</span><span class="op">]</span><span class="op">]</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt;       nu </span></span>
-<span><span class="co">#&gt; 1.212922</span></span>
+<span><span class="co">#&gt;      nu </span></span>
+<span><span class="co">#&gt; 41.1903</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>gaussian <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/AIC.html" class="external-link">AIC</a></span><span class="op">(</span><span class="va">fit</span><span class="op">)</span>, power_exponential <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/AIC.html" class="external-link">AIC</a></span><span class="op">(</span><span class="va">fit_pe</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt;          gaussian power_exponential </span></span>
-<span><span class="co">#&gt;          1110.299          1162.994</span></span></code></pre></div>
+<span><span class="co">#&gt;          1110.299         -8837.617</span></span></code></pre></div>
 <p><code>nu</code> comes out near 3.7 rather than 2, which points to
 slightly <em>lighter</em> tails than Gaussian, but AIC does not prefer
 the richer model. So there is no case for changing the shape once the

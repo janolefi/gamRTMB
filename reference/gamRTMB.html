@@ -62,6 +62,7 @@ differentiation and Laplace approximation, over the log-densities in
 <span>  method <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"REML"</span>, <span class="st">"ML"</span><span class="op">)</span>,</span>
 <span>  engine <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"laplace"</span>, <span class="st">"efs"</span><span class="op">)</span>,</span>
 <span>  sigma_frac <span class="op">=</span> <span class="fl">0.05</span>,</span>
+<span>  sparse <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"never"</span>, <span class="st">"always"</span><span class="op">)</span>,</span>
 <span>  joint_precision <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  start <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  silent <span class="op">=</span> <span class="cn">TRUE</span>,</span>
@@ -127,6 +128,17 @@ to an over-smooth solution, lower it if the objective is not finite at
 the starting values.</p></dd>
 
 
+<dt id="arg-sparse">sparse<a class="anchor" aria-label="anchor" href="#arg-sparse"></a></dt>
+<dd><p>How to treat a smooth whose single penalty is already sparse
+– a Markov random field, a random walk, a supplied GMRF precision.
+<code>"auto"</code> (default) keeps the penalty and gives the block a
+<code><a href="https://rdrr.io/pkg/RTMB/man/MVgauss.html" class="external-link">RTMB::dgmrf()</a></code> prior when it has at least 50 coefficients and is at
+most 20% nonzero, and sends everything else through
+<code><a href="https://rdrr.io/pkg/mgcv/man/smooth2random.html" class="external-link">mgcv::smooth2random()</a></code> as usual. <code>"never"</code> is the old behaviour;
+<code>"always"</code> takes the sparse route for every single-penalty smooth, which
+is mainly useful for checking that the two agree. See <code><a href="dot-gmrf_block.html">.gmrf_block()</a></code>.</p></dd>
+
+
 <dt id="arg-joint-precision">joint_precision<a class="anchor" aria-label="anchor" href="#arg-joint-precision"></a></dt>
 <dd><p>Ask <code><a href="https://rdrr.io/pkg/RTMB/man/TMB-interface.html" class="external-link">RTMB::sdreport()</a></code> for the joint precision
 matrix, which <code><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict()</a></code> needs for standard errors. On by default; turn
@@ -179,6 +191,22 @@ distributional parameter gets a one-sided formula:
 declares but the formula omits are given <code>~1</code>. Parameter names are the
 density's own (<code>xi</code>, <code>omega</code>, <code>alpha</code> for a skew normal), not generic
 location/scale/shape labels.</p>
+    </div>
+    <div class="section level2">
+    <h2 id="sparse-penalties">Sparse penalties<a class="anchor" aria-label="anchor" href="#sparse-penalties"></a></h2>
+
+
+<p>A smooth whose penalty is a sparse precision matrix – <code>bs = "mrf"</code> over an
+adjacency graph, a random walk, or any precision supplied through
+<code>xt = list(penalty = )</code> – can skip <code><a href="https://rdrr.io/pkg/mgcv/man/smooth2random.html" class="external-link">mgcv::smooth2random()</a></code>. That rotation
+makes the coefficients iid, which is convenient but fills the penalty in
+completely; keeping it instead and giving the block an
+\(N(0, \sigma^2 Q^{-1})\) prior through <code><a href="https://rdrr.io/pkg/RTMB/man/MVgauss.html" class="external-link">RTMB::dgmrf()</a></code> is the same
+model at a fraction of the cost. The <code>sparse</code> argument controls this.</p>
+<p>An intrinsic field is corner-constrained rather than sum-to-zero
+constrained, since the latter is what destroys the sparsity. The two are
+equivalent up to a constant absorbed by the intercept, so such a term needs
+its parameter to have one. See <code>.null_space_drop()</code>.</p>
     </div>
     <div class="section level2">
     <h2 id="reml">REML<a class="anchor" aria-label="anchor" href="#reml"></a></h2>

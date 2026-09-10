@@ -43,7 +43,7 @@
 
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">.build_design</span><span class="op">(</span><span class="va">par_formulas</span>, <span class="va">data</span>, <span class="va">parnames</span>, knots <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">.build_design</span><span class="op">(</span><span class="va">par_formulas</span>, <span class="va">data</span>, <span class="va">parnames</span>, knots <span class="op">=</span> <span class="cn">NULL</span>, sparse <span class="op">=</span> <span class="st">"auto"</span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div class="section level2">
@@ -64,6 +64,11 @@
 
 <dt id="arg-knots">knots<a class="anchor" aria-label="anchor" href="#arg-knots"></a></dt>
 <dd><p>Passed to <code><a href="https://rdrr.io/pkg/mgcv/man/smoothCon.html" class="external-link">mgcv::smoothCon()</a></code>.</p></dd>
+
+
+<dt id="arg-sparse">sparse<a class="anchor" aria-label="anchor" href="#arg-sparse"></a></dt>
+<dd><p>Whether a smooth with a single sparse penalty may skip
+<code><a href="https://rdrr.io/pkg/mgcv/man/smooth2random.html" class="external-link">mgcv::smooth2random()</a></code> and keep that penalty; see <code><a href="dot-gmrf_block.html">.gmrf_block()</a></code>.</p></dd>
 
 </dl></div>
     <div class="section level2">

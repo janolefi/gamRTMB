@@ -61,7 +61,7 @@
 <p>The package is mostly glue, by design:</p>
 <ul>
 <li>
-<strong>mgcv</strong> builds the bases and penalties, and <code><a href="https://rdrr.io/pkg/mgcv/man/smooth2random.html" class="external-link">mgcv::smooth2random()</a></code> reparameterises the penalized coefficients as iid Gaussian random effects;</li>
+<strong>mgcv</strong> builds the bases and penalties, and <code><a href="https://rdrr.io/pkg/mgcv/man/smooth2random.html" class="external-link">mgcv::smooth2random()</a></code> reparameterises the penalized coefficients as iid Gaussian random effects — except where the penalty is already a sparse precision matrix, which keeps it and uses <code><a href="https://rdrr.io/pkg/RTMB/man/MVgauss.html" class="external-link">RTMB::dgmrf()</a></code> instead;</li>
 <li>
 <strong>RTMB</strong> supplies automatic differentiation and the Laplace approximation;</li>
 <li>
@@ -140,6 +140,11 @@
 <code>s()</code>, <code>t2()</code>, <code>by=</code>, <code>bs="fs"</code>, <code>bs="re"</code>, shrinkage bases, and <code>id=</code> to share smoothing parameters</td>
 </tr>
 <tr>
+<td>Spatial</td>
+<td>
+<code>bs="mrf"</code> Markov random fields over an adjacency graph, or any precision matrix via <code>xt=list(penalty=)</code>; kept sparse, so a few thousand regions is routine</td>
+</tr>
+<tr>
 <td>Criterion</td>
 <td>REML by default (coefficients integrated out by the same Laplace approximation), or ML</td>
 </tr>
@@ -166,7 +171,7 @@
 <div class="section level2">
 <h2 id="status">Status<a class="anchor" aria-label="anchor" href="#status"></a>
 </h2>
-<p>Early but checked. EDF and fitted values agree with <code>mgcv::gam(family = gaulss())</code> to three decimals, with and without shared smoothing parameters; <code><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict()</a></code> on the fitting data reproduces the in-sample linear predictors to machine precision; and quantile standard errors match both an analytic special case and simulation from the joint posterior.</p>
+<p>Early but checked. EDF and fitted values agree with <code>mgcv::gam(family = gaulss())</code> to three decimals, with and without shared smoothing parameters; <code><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict()</a></code> on the fitting data reproduces the in-sample linear predictors to machine precision; and quantile standard errors match both an analytic special case and simulation from the joint posterior. The sparse GMRF route is a reparameterisation rather than an approximation, and is checked against the dense one: log-likelihood, EDF, AIC, fitted values, predictions and their standard errors all agree, on Markov random fields and on ordinary smooths alike.</p>
 <p>Not supported: <code>te()</code> (mgcv itself declines <code>smooth2random(type = 2)</code> for it — use <code>t2()</code>), <code>fx = TRUE</code>, and smooths whose unpenalized null spaces overlap (use a shrinkage basis, <code>bs = "ts"</code>). Not yet implemented: smooth-term p-values, 2-D smooth plots, and an extended Fellner–Schall fitting engine as an alternative to the Laplace one — <code>dev/NOTES-fellner-schall.md</code> records the derivation and the seams it needs.</p>
 </div>
 </div>
