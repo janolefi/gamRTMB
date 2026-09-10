@@ -42,7 +42,7 @@ test_that("a corner constraint leaves the penalty sparse and positive definite",
   sm <- mrf_smooth(lattice_nb(8))
   expect_equal(sm$null.space.dim, 1)
   B <- .gmrf_block(sm)
-  Q <- B$Q[[1]]
+  Q <- B$spec[[1]]$Q
   expect_equal(ncol(Q), 63L)                 # one coefficient pinned
   expect_true(is_pd(Q))
   expect_lt(Matrix::nnzero(Q) / length(Q), 0.1)
@@ -58,8 +58,8 @@ test_that("a disconnected graph keeps one free level per extra component", {
   sm <- mrf_smooth(lattice_nb(8, island = TRUE))
   expect_equal(sm$null.space.dim, 2)
   B <- .gmrf_block(sm)
-  expect_equal(ncol(B$Q[[1]]), 62L)          # one per component
-  expect_true(is_pd(B$Q[[1]]))
+  expect_equal(ncol(B$spec[[1]]$Q), 62L)          # one per component
+  expect_true(is_pd(B$spec[[1]]$Q))
   expect_equal(ncol(B$Xf), 1L)               # one contrast between components
 })
 
@@ -74,7 +74,7 @@ test_that("a proper precision is left alone", {
                         data = d, absorb.cons = FALSE)[[1]]
   expect_equal(sm$null.space.dim, 0)
   B <- .gmrf_block(sm)
-  expect_equal(ncol(B$Q[[1]]), 64L)          # nothing dropped
+  expect_equal(ncol(B$spec[[1]]$Q), 64L)          # nothing dropped
   expect_false(B$intrinsic)
   expect_equal(ncol(B$Xf), 0L)
 })
@@ -85,19 +85,28 @@ test_that("the null space is found even when it is not just the constant", {
                         absorb.cons = FALSE)[[1]]
   expect_equal(sm$null.space.dim, 2)         # constant and linear
   B <- .gmrf_block(sm)
-  expect_equal(ncol(B$Q[[1]]), 28L)
-  expect_true(is_pd(B$Q[[1]]))
+  expect_equal(ncol(B$spec[[1]]$Q), 28L)
+  expect_true(is_pd(B$spec[[1]]$Q))
   expect_equal(ncol(B$Xf), 1L)               # linear survives, constant does not
 })
 
 test_that("the automatic rule fires on a field and not on an ordinary smooth", {
-  expect_true(.use_sparse(mrf_smooth(lattice_nb(10))$S[[1]], "auto"))
-  expect_false(.use_sparse(mrf_smooth(lattice_nb(6))$S[[1]], "auto"))  # too small
+  expect_true(.use_sparse(mrf_smooth(lattice_nb(10)), "auto"))
+  expect_false(.use_sparse(mrf_smooth(lattice_nb(6)), "auto"))   # too small
   d <- data.frame(x = stats::runif(200))
-  S <- mgcv::smoothCon(mgcv::s(x, k = 20), data = d, absorb.cons = FALSE)[[1]]$S[[1]]
-  expect_false(.use_sparse(S, "auto"))
-  expect_true(.use_sparse(S, "always"))
-  expect_false(.use_sparse(S, "never"))
+  sm <- mgcv::smoothCon(mgcv::s(x, k = 20), data = d, absorb.cons = FALSE)[[1]]
+  expect_false(.use_sparse(sm, "auto"))
+  expect_true(.use_sparse(sm, "always"))
+  expect_false(.use_sparse(sm, "never"))
+  ## a smooth with several penalties has nowhere else to go unless L says how
+  ## they combine, in which case it always takes the sparse route
+  t2sm <- mgcv::smoothCon(mgcv::t2(x, y, k = 4),
+                          data = data.frame(x = d$x, y = stats::runif(200)),
+                          absorb.cons = FALSE)[[1]]
+  expect_gt(length(t2sm$S), 1L)
+  expect_false(.use_sparse(t2sm, "always"))
+  t2sm$L <- matrix(1, length(t2sm$S), 1L)
+  expect_true(.use_sparse(t2sm, "auto"))
 })
 
 

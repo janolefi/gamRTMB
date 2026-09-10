@@ -91,7 +91,7 @@ else are in `vignette("gamRTMB")`.
 | Families | 85, from RTMBdist plus the standard R densities; `families()` lists them, `fam()` builds one |
 | Formula | `y ~ list(mean = ~ s(x), sd = ~ s(z))`, one one-sided formula per parameter, missing ones get `~1` |
 | Smooths | `s()`, `t2()`, `by=`, `bs="fs"`, `bs="re"`, shrinkage bases, and `id=` to share smoothing parameters |
-| Spatial | `bs="mrf"` Markov random fields over an adjacency graph, or any precision matrix via `xt=list(penalty=)`; kept sparse, so a few thousand regions is routine |
+| Spatial | `bs="mrf"` Markov random fields over an adjacency graph, or any precision matrix via `xt=list(penalty=)`; `bs="spde"` Matern fields on an [fmesher](https://cran.r-project.org/package=fmesher) mesh. Both kept sparse, so a few thousand regions or mesh nodes is routine |
 | Criterion | REML by default (coefficients integrated out by the same Laplace approximation), or ML |
 | Inference | `summary()`, `vcov()`, `edf()`, `AIC()`/`BIC()`, `predict()` with standard errors |
 | Diagnostics | `residuals()` gives randomised quantile residuals; `plot(type = "worm")` |
@@ -108,6 +108,10 @@ the joint posterior. The sparse GMRF route is a reparameterisation
 rather than an approximation, and is checked against the dense one:
 log-likelihood, EDF, AIC, fitted values, predictions and their standard
 errors all agree, on Markov random fields and on ordinary smooths alike.
+The SPDE precision matches the closed form
+$\tau^2(\kappa^4 C + 2\kappa^2 G_1 + G_2)$ to 5e-16, and the fitted
+range and marginal standard deviation approach their true values as the
+sample grows.
 
 Not supported: `te()` (mgcv itself declines `smooth2random(type = 2)`
 for it — use `t2()`), `fx = TRUE`, and smooths whose unpenalized null

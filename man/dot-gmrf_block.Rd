@@ -13,7 +13,7 @@
 Returns the same three things the \code{\link[mgcv:smooth2random]{mgcv::smooth2random()}} route returns --
 a design matrix on the penalized coefficients, an unpenalized null-space
 matrix for \code{beta}, and the map back to the smooth's own basis -- so that
-everything downstream is unchanged.
+everything downstream is unchanged, plus the pieces the prior needs.
 }
 \details{
 Null-space columns whose contribution the parameter's intercept already
@@ -23,5 +23,9 @@ connected Markov random field the whole null space is the constant, so no
 free column survives and the intercept carries the level; for a field with
 an island, one contrast between the two components survives, which is
 right, because their levels really are separately free.
+
+A smooth with an \code{L} matrix keeps all of its penalty matrices and gets
+\code{ncol(L)} parameters instead of one. Its penalty is assumed proper -- an
+SPDE precision is, for any positive range -- so no constraint arises.
 }
 \keyword{internal}

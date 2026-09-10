@@ -281,8 +281,12 @@
       ## the constraint is what would densify the penalty, so there is no
       ## way to make this decision from the constrained object.
       scl <- build(sparse == "never")
-      use_sp <- sparse != "never" && length(scl[[1L]]$S) == 1L &&
-        .use_sparse(scl[[1L]]$S[[1L]], sparse)
+      if (sparse == "never" && !is.null(scl[[1L]]$L))
+        stop("the smooth ", sQuote(scl[[1L]]$label), " combines several ",
+             "penalty matrices through an `L` matrix, which mgcv::",
+             "smooth2random() cannot represent. It needs sparse != \"never\".",
+             call. = FALSE)
+      use_sp <- sparse != "never" && .use_sparse(scl[[1L]], sparse)
       if (!use_sp && sparse != "never") scl <- build(TRUE)
       for (sm in scl) {
         if (isTRUE(sm$fixed))
@@ -291,12 +295,13 @@
         B <- if (use_sp) .gmrf_block(sm) else {
           re <- mgcv::smooth2random(sm, "", type = 2)
           list(Xr = lapply(re$rand, as.matrix), Xf = re$Xf,
-               Tmap = .reconstruct_map(re),
-               Q = vector("list", length(re$rand)), intrinsic = FALSE)
+               Tmap = .reconstruct_map(re), intrinsic = FALSE,
+               spec = rep(list(list(kind = "iid", ntheta = 1L,
+                                    theta_names = "sd")), length(re$rand)))
         }
         smooths[[length(smooths) + 1L]] <- list(
           sm = sm, Tmap = B$Tmap, label = sm$label, id = idv,
-          Xr = B$Xr, Xf = B$Xf, Q = B$Q,
+          Xr = B$Xr, Xf = B$Xf, spec = B$spec,
           sparse = use_sp, intrinsic = B$intrinsic,
           plot1d = .plot_spec(sm, data))
       }
@@ -307,7 +312,7 @@
 
   ## index bookkeeping over the two coefficient vectors ---------------------
   beta_idx <- list(); blocks <- list(); par_blocks <- list(); Xfix <- list()
-  nbeta <- 0L; nb <- 0L
+  nbeta <- 0L; nb <- 0L; nsig <- 0L
   for (p in parnames) {
     P <- parts[[p]]
     Xf_all <- P$Xpara
@@ -331,21 +336,23 @@
       loc <- integer(0)
       for (k in seq_along(s$Xr)) {
         q <- ncol(s$Xr[[k]])
-        Qk <- s$Q[[k]]
-        blocks[[length(blocks) + 1L]] <- list(
+        bl <- c(s$spec[[k]], list(
           par = p, smooth = j, penalty = k, q = q,
           label = if (length(s$Xr) > 1L) paste0(s$label, ".s", k) else s$label,
           ## one variance component per penalty per smooth per parameter,
           ## unless an id ties this penalty across a group
           sig_key = if (is.na(s$id)) paste(p, j, k, sep = ":")
                     else paste0("id", s$id, ":", k),
-          idx = nb + seq_len(q), X = s$Xr[[k]], Q = Qk,
-          ## `sigma` scales an iid coefficient directly, but a GMRF
-          ## coefficient only through the penalty: its conditional standard
-          ## deviation is sigma / sqrt(Q_ii). Recording a typical Q_ii lets
-          ## one starting-value rule serve both.
-          qscale = if (is.null(Qk)) 1 else
-            sqrt(mean(Matrix::diag(Qk))))
+          idx = nb + seq_len(q), X = s$Xr[[k]],
+          theta_idx = nsig + seq_len(s$spec[[k]]$ntheta)))
+        ## `sigma` scales an iid coefficient directly, but a GMRF coefficient
+        ## only through the penalty: its conditional standard deviation is
+        ## sigma / sqrt(Q_ii). Recording a typical Q_ii lets one
+        ## starting-value rule serve both.
+        bl$qscale <- if (identical(bl$kind, "gmrf"))
+          sqrt(mean(Matrix::diag(bl$Q))) else 1
+        nsig <- nsig + bl$ntheta
+        blocks[[length(blocks) + 1L]] <- bl
         loc <- c(loc, length(blocks)); nb <- nb + q
       }
       parts[[p]]$smooths[[j]]$block_ids <- loc
@@ -398,13 +405,17 @@
     }
   }
 
-  keys <- vapply(blocks, `[[`, "", "sig_key")
+  ## The grouping runs over entries of the parameter vector rather than over
+  ## blocks, since a block may carry more than one: an `id` ties a smooth's
+  ## whole parameterisation to another's, entry by entry.
+  keys <- unlist(lapply(blocks, function(z)
+    paste0(z$sig_key, ":", seq_len(z$ntheta))))
   sig_group <- factor(keys, levels = unique(keys))
 
   structure(list(
     parts = parts, parnames = parnames, n = n, Xfix = Xfix,
     beta_idx = beta_idx, blocks = blocks, par_blocks = par_blocks,
-    nbeta = nbeta, nb = nb, nsigma = length(blocks),
+    nbeta = nbeta, nb = nb, nsigma = nsig,
     sig_group = sig_group, nsigma_free = nlevels(sig_group)
   ), class = "gamRTMB_design")
 }

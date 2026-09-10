@@ -72,7 +72,11 @@ edf.gamRTMB <- function(object, ...) {
     rows[[length(rows) + 1L]] <- data.frame(
       parameter = p, term = s$label, edf = sum(edf_all[ii]),
       k = ncol(s$sm$X),
-      sp = paste(sprintf("%.4g", exp(-2 * ls[s$block_ids])), collapse = ","),
+      sp = paste(unlist(lapply(D$blocks[s$block_ids], function(bl)
+        if (identical(bl$theta_names, "sd"))
+          sprintf("%.4g", exp(-2 * ls[bl$theta_idx]))
+        else sprintf("%s=%.4g", bl$theta_names, exp(ls[bl$theta_idx])))),
+        collapse = ","),
       id = if (is.na(s$id)) "" else s$id, row.names = NULL)
   }
   res <- if (length(rows)) do.call(rbind, rows) else
@@ -93,17 +97,17 @@ edf.gamRTMB <- function(object, ...) {
 .penalty_matrix <- function(design, ls, ph) {
   np <- nrow(ph$H)
   ii <- jj <- integer(0); xx <- numeric(0)
-  for (k in seq_along(design$blocks)) {
-    bl <- design$blocks[[k]]
+  for (bl in design$blocks) {
     r <- ph$i_b[bl$idx]
-    lam <- exp(-2 * ls[k])
-    if (is.null(bl$Q)) {
-      ii <- c(ii, r); jj <- c(jj, r); xx <- c(xx, rep(lam, length(r)))
+    if (identical(bl$kind, "iid")) {
+      ii <- c(ii, r); jj <- c(jj, r)
+      xx <- c(xx, rep(exp(-2 * ls[bl$theta_idx]), length(r)))
     } else {
-      ## `bl$Q` is stored symmetric, and a symmetric sparse matrix keeps only
-      ## one triangle; going through "generalMatrix" first gets both.
-      tq <- Matrix::summary(as(as(bl$Q, "generalMatrix"), "TsparseMatrix"))
-      ii <- c(ii, r[tq$i]); jj <- c(jj, r[tq$j]); xx <- c(xx, lam * tq$x)
+      ## A precision is stored symmetric, and a symmetric sparse matrix keeps
+      ## only one triangle; going through "generalMatrix" first gets both.
+      Q <- .block_prec(bl, ls[bl$theta_idx])
+      tq <- Matrix::summary(as(as(Q, "generalMatrix"), "TsparseMatrix"))
+      ii <- c(ii, r[tq$i]); jj <- c(jj, r[tq$j]); xx <- c(xx, tq$x)
     }
   }
   Matrix::sparseMatrix(i = ii, j = jj, x = xx, dims = c(np, np))

@@ -49,10 +49,11 @@
 
     for (k in seq_along(blocks)) {
       bl <- blocks[[k]]
-      jnll <- jnll - if (is.null(bl$Q))
-        sum(dnorm(b[bl$idx], 0, exp(log_sigma[k]), log = TRUE))
+      th <- log_sigma[bl$theta_idx]
+      jnll <- jnll - if (identical(bl$kind, "iid"))
+        sum(dnorm(b[bl$idx], 0, exp(th[1L]), log = TRUE))
       else
-        RTMB::dgmrf(b[bl$idx], 0, bl$Q * exp(-2 * log_sigma[k]), log = TRUE)
+        RTMB::dgmrf(b[bl$idx], 0, .block_prec(bl, th), log = TRUE)
     }
 
     theta <- list()
@@ -102,10 +103,13 @@
     if (!is.na(k)) beta0[ii[k]] <- s0[[p]]
   }
   sc <- family$eta_scale(y)
-  ls0 <- vapply(design$blocks, function(bl) {
+  ls0 <- as.numeric(unlist(lapply(design$blocks, function(bl) {
     rs <- sqrt(mean(Matrix::rowSums(bl$X^2)))
-    log(max(frac * sc[[bl$par]] * bl$qscale / max(rs, 1e-8), 1e-4))
-  }, numeric(1))
+    s1 <- log(max(frac * sc[[bl$par]] * bl$qscale / max(rs, 1e-8), 1e-4))
+    ## A block with its own parameterisation is not a variance, so the rule
+    ## above does not apply to it. Its constructor supplies the start.
+    if (bl$ntheta == 1L) s1 else bl$theta_start
+  })))
   pars <- list(beta = beta0, b = numeric(design$nb),
                log_sigma = stats::ave(ls0, design$sig_group))
   if (!is.null(start)) pars[names(start)] <- start

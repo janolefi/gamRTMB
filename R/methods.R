@@ -388,8 +388,9 @@ coef.gamRTMB <- function(object, ...) {
   b <- object$coefficients$beta
   names(b) <- .beta_labels(object$design)
   ls <- object$log_sigma
-  names(ls) <- vapply(object$design$blocks, function(z)
-    paste0(z$par, ":", z$label), "")
+  names(ls) <- unlist(lapply(object$design$blocks, function(z)
+    paste0(z$par, ":", z$label,
+           if (z$ntheta > 1L) paste0(":", z$theta_names) else "")))
   list(beta = b, b = object$coefficients$b, log_sigma = ls)
 }
 

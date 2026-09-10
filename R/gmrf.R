@@ -5,22 +5,31 @@
 ## `dgmrf(b, 0, Q / sigma^2)` prior. The two are the same model; only the
 ## parameterisation differs.
 
-#' Is this penalty worth keeping sparse?
+#' Is this smooth's penalty worth keeping sparse?
 #'
-#' Two conditions. The smooth must have exactly one penalty, since several
-#' penalties on one coefficient block is what the whole `smooth2random`
-#' machinery exists to handle. And the penalty must be big and sparse enough
-#' that the rotation would actually cost something: a 10-coefficient
-#' P-spline penalty is technically banded, but nothing is gained by treating
-#' it specially, and the well-travelled route is the safer one.
+#' Two ways to qualify. A smooth with a single penalty qualifies if that
+#' penalty is big and sparse enough that `smooth2random`'s rotation would
+#' actually cost something -- a 10-coefficient P-spline penalty is technically
+#' banded, but nothing is gained by treating it specially and the
+#' well-travelled route is the safer one.
 #'
-#' @param S The penalty matrix.
+#' A smooth carrying an `L` matrix qualifies outright, whatever its size. `L`
+#' is mgcv's way of saying that several penalty matrices combine into one
+#' through fewer smoothing parameters than there are matrices, as
+#' \eqn{\lambda = \exp(L\theta)}. `smooth2random` cannot represent that at
+#' all -- it needs one variance per penalized block -- so such a smooth has
+#' nowhere else to go. The SPDE smooth is the case in hand: three finite
+#' element matrices, two parameters.
+#'
+#' @param sm A `smoothCon` object.
 #' @param mode `"auto"`, `"always"` or `"never"`.
 #' @keywords internal
-.use_sparse <- function(S, mode) {
+.use_sparse <- function(sm, mode) {
   if (mode == "never") return(FALSE)
+  if (!is.null(sm$L)) return(TRUE)
+  if (length(sm$S) != 1L) return(FALSE)
   if (mode == "always") return(TRUE)
-  ncol(S) >= 50L && mean(S != 0) <= 0.2
+  ncol(sm$S[[1L]]) >= 50L && mean(sm$S[[1L]] != 0) <= 0.2
 }
 
 #' The null space of a penalty, and which coefficients to drop for it
@@ -125,7 +134,7 @@
 #' Returns the same three things the [mgcv::smooth2random()] route returns --
 #' a design matrix on the penalized coefficients, an unpenalized null-space
 #' matrix for `beta`, and the map back to the smooth's own basis -- so that
-#' everything downstream is unchanged.
+#' everything downstream is unchanged, plus the pieces the prior needs.
 #'
 #' Null-space columns whose contribution the parameter's intercept already
 #' covers are left out, which is what the sum-to-zero constraint achieves on
@@ -135,10 +144,29 @@
 #' an island, one contrast between the two components survives, which is
 #' right, because their levels really are separately free.
 #'
+#' A smooth with an `L` matrix keeps all of its penalty matrices and gets
+#' `ncol(L)` parameters instead of one. Its penalty is assumed proper -- an
+#' SPDE precision is, for any positive range -- so no constraint arises.
+#'
 #' @param sm A `smoothCon` object built with `absorb.cons = FALSE`.
 #' @keywords internal
 .gmrf_block <- function(sm) {
+  spm <- function(M) as(as(Matrix::Matrix(M, sparse = TRUE), "generalMatrix"),
+                        "CsparseMatrix")
   q <- ncol(sm$X)
+
+  if (!is.null(sm$L)) {
+    nm <- if (!is.null(sm$theta.names)) sm$theta.names else
+      paste0("theta", seq_len(ncol(sm$L)))
+    return(list(Xr = list(spm(sm$X)), Xf = matrix(0, nrow(sm$X), 0L),
+                Tmap = Matrix::Diagonal(q), intrinsic = FALSE,
+                spec = list(list(kind = "multi", Smats = lapply(sm$S, spm),
+                                 L = as.matrix(sm$L), ntheta = ncol(sm$L),
+                                 theta_names = nm,
+                                 theta_start = if (!is.null(sm$theta.start))
+                                   sm$theta.start else rep(0, ncol(sm$L))))))
+  }
+
   S <- Matrix::Matrix(sm$S[[1L]], sparse = TRUE)
   ns <- .null_space(S, as.integer(sm$null.space.dim))
   keep <- setdiff(seq_len(q), ns$drop)
@@ -152,7 +180,38 @@
   Tm <- cbind(Matrix::sparseMatrix(i = keep, j = seq_along(keep), x = 1,
                                    dims = c(q, length(keep))),
               Matrix::Matrix(ns$N[, free, drop = FALSE], sparse = TRUE))
-  list(Xr = list(as(sm$X[, keep, drop = FALSE], "CsparseMatrix")),
-       Xf = V[, free, drop = FALSE], Tmap = Tm, Q = list(Q),
-       intrinsic = length(ns$drop) > 0L)
+  list(Xr = list(spm(sm$X[, keep, drop = FALSE])),
+       Xf = V[, free, drop = FALSE], Tmap = Tm,
+       intrinsic = length(ns$drop) > 0L,
+       spec = list(list(kind = "gmrf", Q = Q, ntheta = 1L,
+                        theta_names = "sd")))
+}
+
+#' A penalized block's precision matrix, at given parameters
+#'
+#' The one place that knows how a block's parameters become a precision, so
+#' that the objective and [edf()] cannot drift apart. Written to work both on
+#' an RTMB tape and on plain numbers.
+#'
+#' `"iid"` is the [mgcv::smooth2random()] basis, where the penalty is the
+#' identity. `"gmrf"` keeps a fixed sparse precision and scales it. `"multi"`
+#' combines several penalty matrices through mgcv's `L` convention,
+#' \eqn{\lambda = \exp(L\theta)} and \eqn{Q = \sum_i \lambda_i S_i}, which
+#' is how a Matern SPDE writes
+#' \eqn{\tau^2(\kappa^4 C + 2\kappa^2 G_1 + G_2)} with
+#' \eqn{\theta = (\log\tau, \log\kappa)}.
+#'
+#' @param bl A block from [.build_design()].
+#' @param theta That block's parameters, `bl$ntheta` of them.
+#' @keywords internal
+.block_prec <- function(bl, theta) {
+  switch(bl$kind,
+    iid  = Matrix::Diagonal(bl$q, exp(-2 * theta[1L])),
+    gmrf = bl$Q * exp(-2 * theta[1L]),
+    multi = {
+      Q <- bl$Smats[[1L]] * exp(sum(bl$L[1L, ] * theta))
+      for (i in seq_along(bl$Smats)[-1L])
+        Q <- Q + bl$Smats[[i]] * exp(sum(bl$L[i, ] * theta))
+      Q
+    })
 }
