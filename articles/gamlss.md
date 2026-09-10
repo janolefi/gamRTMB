@@ -51,8 +51,8 @@ data.frame(
   check.names = FALSE
 )
 #>       fit seconds  edf -2logL    AIC
-#> 1  gamlss    0.24 7.68 4785.7 4801.1
-#> 2 gamRTMB    0.94 7.63 4786.0 4801.2
+#> 1  gamlss    0.25 7.68 4785.7 4801.1
+#> 2 gamRTMB    0.87 7.63 4786.0 4801.2
 ```
 
 Nearly identical: 7.68 against 7.63 effective degrees of freedom, and
@@ -65,7 +65,7 @@ p1 <- predict(f1, type = "response")
 c(mean = max(abs(fitted(m1, "mu")    - p1$mean)) / sd(abdom$y),
   sd   = max(abs(fitted(m1, "sigma") - p1$sd))   / sd(abdom$y))
 #>         mean           sd 
-#> 1.440750e-03 7.227518e-05
+#> 1.440750e-03 7.227528e-05
 ```
 
 ## Gamma: `rent`
@@ -94,8 +94,8 @@ data.frame(
   AIC     = round(c(AIC(m2), AIC(f2)), 1)
 )
 #>       fit seconds  edf     AIC
-#> 1  gamlss    0.65 9.11 28061.6
-#> 2 gamRTMB    1.11 8.74 28062.9
+#> 1  gamlss    0.66 9.11 28061.6
+#> 2 gamRTMB    1.07 8.74 28062.9
 
 p2 <- predict(f2, type = "response")
 c(mean = cor(fitted(m2, "mu"), p2$mean),
@@ -133,8 +133,8 @@ data.frame(
   AIC     = round(c(AIC(m3), AIC(f3)), 1)
 )
 #>       fit seconds   edf    AIC
-#> 1  gamlss    0.76 11.76 4794.5
-#> 2 gamRTMB    2.96 15.01 4803.5
+#> 1  gamlss    0.77 11.76 4794.5
+#> 2 gamRTMB    3.18 15.01 4803.5
 ```
 
 Here the two part company a little. The fitted curves still agree —
@@ -161,6 +161,118 @@ plot(f3, type = "quantile", prob = c(0.03, 0.1, 0.5, 0.9, 0.97))
 age, from the Box-Cox t model, over the
 data.](gamlss_files/figure-html/bct-centiles-1.png)
 
+## Where the two disagree: flat directions
+
+The three examples so far are the ones GAMLSS was built for, and it
+handles them. The place the two approaches genuinely part company is a
+smooth on a parameter whose Fisher information collapses over part of
+its range.
+
+GAMLSS fits by backfitting (the RS algorithm), which reweights the data
+by that information at every step and selects the smoothing parameter
+from those same weights. When the information goes to zero the weights
+collapse, the working response blows up, and the penalty cannot rein it
+back in because it was chosen from the degenerate weights. `gamRTMB`
+never forms a working weight: the smooth’s coefficients are integrated
+out by a Laplace approximation and the smoothing parameter comes from
+the resulting marginal likelihood, which stays finite in a flat
+direction instead of inverting it.
+
+Both cases below are simulated, so we know the answer. The helper fits
+both packages on several data sets and records how often each converged
+and how far its fitted parameter lands from the truth.
+
+``` r
+
+compare <- function(nseed, sim, gfit, rfit, gpar, rpar, trans = identity) {
+  one <- function(sx) {
+    d <- sim(sx); conv <- TRUE
+    g <- withCallingHandlers(tryCatch(gfit(d), error = function(e) NULL),
+           warning = function(z) {
+             if (grepl("converge", conditionMessage(z))) conv <<- FALSE
+             invokeRestart("muffleWarning") })
+    r <- tryCatch(suppressWarnings(rfit(d)), error = function(e) NULL)
+    err <- function(v) if (is.null(v)) NA else
+      sqrt(mean((trans(v) - trans(d$true))^2))
+    c(!is.null(g) && conv && isTRUE(g$converged),
+      !is.null(r) && isTRUE(r$convergence),
+      err(if (is.null(g)) NULL else fitted(g, gpar)),
+      err(if (is.null(r)) NULL else fitted(r)[[rpar]]))
+  }
+  z <- vapply(seq_len(nseed), one, numeric(4))
+  data.frame(converged = paste0(rowSums(z[1:2, ]), "/", nseed),
+             rmse = round(apply(z[3:4, ], 1, median), 2),
+             row.names = c("gamlss", "gamRTMB"))
+}
+```
+
+### A smooth on the degrees of freedom of a *t*
+
+The *t* density approaches a normal as its degrees of freedom grow, so
+the likelihood flattens out in that direction: the observed information
+for `log(df)` falls from 0.24 at `df = 2` to 3e-4 at `df = 100`. Here
+the true `df` sweeps from 0.6 to 12 as a function of `x`, with location
+and scale held constant.
+
+``` r
+
+compare(10,
+  function(sx) { set.seed(sx); x <- runif(200)
+                 nu <- exp(1 + 1.5 * cos(2 * pi * x))
+                 data.frame(x = x, true = nu, y = rTF(200, 0, 1, nu)) },
+  function(d) gamlss(y ~ 1, sigma.fo = ~ 1, nu.fo = ~ pb(x),
+                     family = TF, data = d, trace = FALSE),
+  function(d) gamRTMB(y ~ list(mu = ~ 1, sigma = ~ 1, df = ~ s(x, k = 10)),
+                      family = fam("t2"), data = d),
+  "nu", "df", log)
+#>         converged  rmse
+#> gamlss       7/10 15.00
+#> gamRTMB     10/10  0.71
+```
+
+The RMSE is on the log scale, so a value of 15 means the fitted degrees
+of freedom are out by a factor of `exp(15)`. The failure is not confined
+to the runs GAMLSS flags: on five of the six runs it reports as
+*converged*, the fitted `df` still runs off past 1e11, and on one of
+them it reaches 3e221. Seed 8 is the clearest single case — GAMLSS
+spends 22.0 effective degrees of freedom to reach a log-likelihood of
+-436.3, where `gamRTMB` spends 3.5 and reaches -414.4. More flexibility,
+worse fit. Swapping the smoother does not help: `pb(method = "GAIC")`
+and a fixed-df [`cs()`](https://rdrr.io/pkg/gamlss/man/cs.html) both
+diverge the same way, which is what points at the working weights rather
+than at the choice of penalty.
+
+### A skew normal with all three parameters smooth
+
+``` r
+
+compare(8,
+  function(sx) { set.seed(sx); x <- runif(250); al <- 3 * sin(2 * pi * x)
+                 data.frame(x = x, true = al,
+                            y = rSN1(250, sin(2 * pi * x),
+                                     exp(-0.5 + 0.6 * cos(2 * pi * x)), al)) },
+  function(d) gamlss(y ~ pb(x), sigma.fo = ~ pb(x), nu.fo = ~ pb(x),
+                     family = SN1, data = d, trace = FALSE),
+  function(d) gamRTMB(y ~ list(mean = ~ s(x, k = 10), sd = ~ s(x, k = 10),
+                               alpha = ~ s(x, k = 10)),
+                      family = fam("skewnorm2"), data = d),
+  "nu", "alpha")
+#>         converged rmse
+#> gamlss        2/8 2.25
+#> gamRTMB       6/8 1.95
+```
+
+The slant is the flat direction here: the score for it vanishes
+identically at zero skewness, so the surface has a plateau exactly where
+a fit is likely to start. GAMLSS rarely gets off it. Its fitted slant
+stays inside 0.4 in absolute value against a truth ranging over 3, which
+is why its RMSE of 2.25 is no better than the 2.12 you would score by
+giving up and fitting no skewness at all — and it spends 15 to 18
+effective degrees of freedom doing it. `gamRTMB` recovers roughly the
+right amplitude, though it is not comfortable here either: it fails to
+converge on some runs and overshoots the slant on others. This is a hard
+likelihood for anything.
+
 ## Speed
 
 One run each on one machine, so read these as orders of magnitude rather
@@ -180,16 +292,17 @@ res <- t(vapply(sizes, function(n) {
 }, c(gamlss = 0, gamRTMB = 0)))
 data.frame(n = sizes, round(res, 2))
 #>      n gamlss gamRTMB
-#> 1  500   0.79    1.00
-#> 2 2000   0.98    2.69
-#> 3 7294   5.42    6.57
+#> 1  500   0.80    1.03
+#> 2 2000   0.75    2.63
+#> 3 7294   5.31    6.49
 ```
 
-Neither dominates. Both stay within a factor of two of each other across
-this range, and which one is ahead is not even monotone in `n` — which
-is itself the finding: the differences are small enough that a single
-run cannot separate them, and no scaling story should be read into three
-points this close. Speed is not a reason to pick either package here.
+Neither dominates. Both stay within about a factor of two of each other
+across this range, and which one is ahead is not even monotone in `n` —
+which is itself the finding: the differences are small enough that a
+single run cannot separate them, and no scaling story should be read
+into three points this close. Speed is not a reason to pick either
+package here.
 
 ## What actually differs
 
@@ -206,6 +319,8 @@ Where `gamRTMB` gives you something else:
   between terms *and between distributional parameters*.
 - **Exact derivatives**, by automatic differentiation rather than
   analytic or numerical ones supplied per family.
+- **Flat directions**, as above: no working weights to collapse, so a
+  smooth on a weakly identified parameter degrades rather than diverges.
 
 Where GAMLSS is ahead today: term selection (`stepGAIC`), distribution
 search (`fitDist`, `chooseDist`), censoring and truncation of arbitrary

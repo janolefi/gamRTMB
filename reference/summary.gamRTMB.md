@@ -68,7 +68,7 @@ summary(gamRTMB(y ~ list(mean = ~ s(x1), sd = ~ s(x2)), data = d))
 #> Smooth terms:
 #>        term   edf k        sp
 #>  mean:s(x1) 6.377 9    0.1225
-#>  sd:s(x2)   1.000 9 2.484e+08
+#>  sd:s(x2)   1.000 9 2.828e+08
 #> 
 #> Total EDF = 9.38   n = 300
 #> -REML = 309.343   logLik = -289.210   AIC = 597.17

@@ -69,7 +69,7 @@ fit
 #> gamRTMB fit
 #>   family:    norm (mean/identity, sd/log)
 #>   criterion: REML   engine: laplace
-#>   converged: TRUE   -REML: 587.0647   max|grad|: 1.97e-06
+#>   converged: TRUE   -REML: 587.0647   max|grad|: 2.55e-05
 #>   observations: 133
 #>   coefficients: 4 fixed (incl. null spaces), 28 penalized; 2 smoothing parameters
 ```
@@ -95,7 +95,7 @@ summary(fit)
 #> Smooth terms:
 #>           term    edf  k        sp
 #>  mean:s(times) 14.433 19 2.869e-06
-#>  sd:s(times)    7.578 11  0.008295
+#>  sd:s(times)    7.578 11  0.008296
 #> 
 #> Total EDF = 24.01   n = 133
 #> -REML = 587.065   logLik = -531.138   AIC = 1110.30
@@ -190,12 +190,17 @@ fit_pe <- gamRTMB(accel ~ list(mu = ~ s(times, k = 20),
                                sigma = ~ s(times, k = 12),
                                nu = ~ 1),
                   family = fam("powerexp2"), data = mcycle)
+#> Warning: the outer optimiser stopped early: NA/NaN gradient evaluation. The
+#> best point reached is returned, but the fit has not converged -- check
+#> `fit$convergence`, and treat the smoothing parameters and any standard errors
+#> with suspicion. This usually means a smoothing parameter ran into a region
+#> where family 'powerexp2' cannot be differentiated.
 c(nu = exp(coef(fit_pe)$beta[["nu:(Intercept)"]]))
 #>       nu 
-#> 3.693093
+#> 1.212922
 c(gaussian = AIC(fit), power_exponential = AIC(fit_pe))
 #>          gaussian power_exponential 
-#>          1110.299          1114.118
+#>          1110.299          1162.994
 ```
 
 `nu` comes out near 3.7 rather than 2, which points to slightly
@@ -323,9 +328,9 @@ fit_sel <- gamRTMB(accel ~ list(mean = ~ s(times, bs = "ts", k = 20),
                    data = mcycle)
 edf(fit_sel)
 #>   parameter     term          edf  k        sp id
-#> 1      mean s(times) 1.425396e+01 19 3.116e-06   
-#> 2        sd s(times) 7.190128e+00 11   0.01089   
-#> 3        sd s(noise) 3.401325e-07  7 3.697e+09
+#> 1      mean s(times) 1.425398e+01 19 3.116e-06   
+#> 2        sd s(times) 7.190166e+00 11   0.01089   
+#> 3        sd s(noise) 2.704209e-07  7  4.65e+09
 ```
 
 The irrelevant covariate is driven to an effective degrees of freedom of

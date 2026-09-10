@@ -119,7 +119,7 @@ smooth:</p>
 <span><span class="co">#&gt; gamRTMB fit</span></span>
 <span><span class="co">#&gt;   family:    norm (mean/identity, sd/log)</span></span>
 <span><span class="co">#&gt;   criterion: REML   engine: laplace</span></span>
-<span><span class="co">#&gt;   converged: TRUE   -REML: 587.0647   max|grad|: 1.97e-06</span></span>
+<span><span class="co">#&gt;   converged: TRUE   -REML: 587.0647   max|grad|: 2.55e-05</span></span>
 <span><span class="co">#&gt;   observations: 133</span></span>
 <span><span class="co">#&gt;   coefficients: 4 fixed (incl. null spaces), 28 penalized; 2 smoothing parameters</span></span></code></pre></div>
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
@@ -142,7 +142,7 @@ smooth:</p>
 <span><span class="co">#&gt; Smooth terms:</span></span>
 <span><span class="co">#&gt;           term    edf  k        sp</span></span>
 <span><span class="co">#&gt;  mean:s(times) 14.433 19 2.869e-06</span></span>
-<span><span class="co">#&gt;  sd:s(times)    7.578 11  0.008295</span></span>
+<span><span class="co">#&gt;  sd:s(times)    7.578 11  0.008296</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Total EDF = 24.01   n = 133</span></span>
 <span><span class="co">#&gt; -REML = 587.065   logLik = -531.138   AIC = 1110.30</span></span></code></pre></div>
@@ -217,12 +217,17 @@ the tails, with <code>nu = 2</code> being exactly Gaussian:</p>
 <span>                               sigma <span class="op">=</span> <span class="op">~</span> <span class="fu">s</span><span class="op">(</span><span class="va">times</span>, k <span class="op">=</span> <span class="fl">12</span><span class="op">)</span>,</span>
 <span>                               nu <span class="op">=</span> <span class="op">~</span> <span class="fl">1</span><span class="op">)</span>,</span>
 <span>                  family <span class="op">=</span> <span class="fu"><a href="../reference/fam.html">fam</a></span><span class="op">(</span><span class="st">"powerexp2"</span><span class="op">)</span>, data <span class="op">=</span> <span class="va">mcycle</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Warning: the outer optimiser stopped early: NA/NaN gradient evaluation. The</span></span>
+<span><span class="co">#&gt; best point reached is returned, but the fit has not converged -- check</span></span>
+<span><span class="co">#&gt; `fit$convergence`, and treat the smoothing parameters and any standard errors</span></span>
+<span><span class="co">#&gt; with suspicion. This usually means a smoothing parameter ran into a region</span></span>
+<span><span class="co">#&gt; where family 'powerexp2' cannot be differentiated.</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>nu <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">exp</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/coef.html" class="external-link">coef</a></span><span class="op">(</span><span class="va">fit_pe</span><span class="op">)</span><span class="op">$</span><span class="va">beta</span><span class="op">[[</span><span class="st">"nu:(Intercept)"</span><span class="op">]</span><span class="op">]</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt;       nu </span></span>
-<span><span class="co">#&gt; 3.693093</span></span>
+<span><span class="co">#&gt; 1.212922</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>gaussian <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/AIC.html" class="external-link">AIC</a></span><span class="op">(</span><span class="va">fit</span><span class="op">)</span>, power_exponential <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/AIC.html" class="external-link">AIC</a></span><span class="op">(</span><span class="va">fit_pe</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt;          gaussian power_exponential </span></span>
-<span><span class="co">#&gt;          1110.299          1114.118</span></span></code></pre></div>
+<span><span class="co">#&gt;          1110.299          1162.994</span></span></code></pre></div>
 <p><code>nu</code> comes out near 3.7 rather than 2, which points to
 slightly <em>lighter</em> tails than Gaussian, but AIC does not prefer
 the richer model. So there is no case for changing the shape once the
@@ -322,9 +327,9 @@ a covariate at all:</p>
 <span>                   data <span class="op">=</span> <span class="va">mcycle</span><span class="op">)</span></span>
 <span><span class="fu"><a href="../reference/edf.html">edf</a></span><span class="op">(</span><span class="va">fit_sel</span><span class="op">)</span></span>
 <span><span class="co">#&gt;   parameter     term          edf  k        sp id</span></span>
-<span><span class="co">#&gt; 1      mean s(times) 1.425396e+01 19 3.116e-06   </span></span>
-<span><span class="co">#&gt; 2        sd s(times) 7.190128e+00 11   0.01089   </span></span>
-<span><span class="co">#&gt; 3        sd s(noise) 3.401325e-07  7 3.697e+09</span></span></code></pre></div>
+<span><span class="co">#&gt; 1      mean s(times) 1.425398e+01 19 3.116e-06   </span></span>
+<span><span class="co">#&gt; 2        sd s(times) 7.190166e+00 11   0.01089   </span></span>
+<span><span class="co">#&gt; 3        sd s(noise) 2.704209e-07  7  4.65e+09</span></span></code></pre></div>
 <p>The irrelevant covariate is driven to an effective degrees of freedom
 of about 3e-07 — gone, not merely small — while the real terms are
 untouched. An ordinary <code>s()</code> cannot do this: its unpenalized

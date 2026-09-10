@@ -17,7 +17,7 @@ gamRTMB(
   knots = NULL,
   method = c("REML", "ML"),
   engine = c("laplace", "efs"),
-  sigma_frac = 0.2,
+  sigma_frac = 0.05,
   joint_precision = TRUE,
   start = NULL,
   silent = TRUE,
@@ -79,8 +79,12 @@ fitted(object, ...)
 
 - sigma_frac:
 
-  Tuning constant for the variance-component starting values; see
+  Tuning constant for the variance-component starting values: each
+  smooth starts contributing this fraction of its parameter's
+  linear-predictor scale. See
   [`.init_pars()`](https://janolefi.github.io/gamRTMB/reference/dot-init_pars.md).
+  Raise it if a fit converges to an over-smooth solution, lower it if
+  the objective is not finite at the starting values.
 
 - joint_precision:
 
@@ -180,11 +184,11 @@ fit
 #> gamRTMB fit
 #>   family:    norm (mean/identity, sd/log)
 #>   criterion: REML   engine: laplace
-#>   converged: TRUE   -REML: 195.2955   max|grad|: 3.48e-08
+#>   converged: TRUE   -REML: 195.2955   max|grad|: 4.2e-05
 #>   observations: 200
 #>   coefficients: 4 fixed (incl. null spaces), 12 penalized; 2 smoothing parameters
 edf(fit)
 #>   parameter  term      edf k        sp id
-#> 1      mean s(x1) 5.302736 7     0.121   
-#> 2        sd s(x2) 1.000000 7 4.246e+08   
+#> 1      mean s(x1) 5.302745 7     0.121   
+#> 2        sd s(x2) 1.000000 7 3.658e+08   
 ```
