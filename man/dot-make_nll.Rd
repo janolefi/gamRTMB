@@ -21,12 +21,20 @@
 A function of a parameter list \code{list(beta, b, log_sigma)}.
 }
 \description{
-The penalized coefficients carry an iid \eqn{N(0, \sigma_k^2)} prior, one
-variance per penalized block. Null-space coefficients live in \code{beta} and
-are never given a prior. Nothing is shared across smooths or across
-distributional parameters unless an \code{id} says so.
+The penalized coefficients carry a mean-zero Gaussian prior, one variance
+per penalized block. Which Gaussian depends on the route the block took
+through \code{\link[=.build_design]{.build_design()}}: after \code{\link[mgcv:smooth2random]{mgcv::smooth2random()}} the penalty is the
+identity and the prior is iid \eqn{N(0, \sigma_k^2)}, while a block that
+kept its own sparse penalty gets \eqn{N(0, \sigma_k^2 Q_k^{-1})} through
+\code{\link[RTMB:MVgauss]{RTMB::dgmrf()}}. The two are the same model written two ways; keeping
+\eqn{Q_k} sparse is what lets a Markov random field over many regions stay
+affordable, since \code{smooth2random}'s rotation would fill it in.
 }
 \details{
+Null-space coefficients live in \code{beta} and are never given a prior.
+Nothing is shared across smooths or across distributional parameters
+unless an \code{id} says so.
+
 Prior weights multiply each observation's log-density contribution, as in
 \code{\link[stats:glm]{stats::glm()}}. Offsets are added to the relevant parameter's linear
 predictor.

@@ -15,7 +15,8 @@ The package is mostly glue, by design:
 
 - **mgcv** builds the bases and penalties, and `mgcv::smooth2random()`
   reparameterises the penalized coefficients as iid Gaussian random
-  effects;
+  effects — except where the penalty is already a sparse precision
+  matrix, which keeps it and uses `RTMB::dgmrf()` instead;
 - **RTMB** supplies automatic differentiation and the Laplace
   approximation;
 - **RTMBdist** supplies the log-densities, each in its own **native**
@@ -90,6 +91,7 @@ else are in `vignette("gamRTMB")`.
 | Families | 85, from RTMBdist plus the standard R densities; `families()` lists them, `fam()` builds one |
 | Formula | `y ~ list(mean = ~ s(x), sd = ~ s(z))`, one one-sided formula per parameter, missing ones get `~1` |
 | Smooths | `s()`, `t2()`, `by=`, `bs="fs"`, `bs="re"`, shrinkage bases, and `id=` to share smoothing parameters |
+| Spatial | `bs="mrf"` Markov random fields over an adjacency graph, or any precision matrix via `xt=list(penalty=)`; kept sparse, so a few thousand regions is routine |
 | Criterion | REML by default (coefficients integrated out by the same Laplace approximation), or ML |
 | Inference | `summary()`, `vcov()`, `edf()`, `AIC()`/`BIC()`, `predict()` with standard errors |
 | Diagnostics | `residuals()` gives randomised quantile residuals; `plot(type = "worm")` |
@@ -102,7 +104,10 @@ Early but checked. EDF and fitted values agree with
 shared smoothing parameters; `predict()` on the fitting data reproduces
 the in-sample linear predictors to machine precision; and quantile
 standard errors match both an analytic special case and simulation from
-the joint posterior.
+the joint posterior. The sparse GMRF route is a reparameterisation
+rather than an approximation, and is checked against the dense one:
+log-likelihood, EDF, AIC, fitted values, predictions and their standard
+errors all agree, on Markov random fields and on ordinary smooths alike.
 
 Not supported: `te()` (mgcv itself declines `smooth2random(type = 2)`
 for it — use `t2()`), `fx = TRUE`, and smooths whose unpenalized null

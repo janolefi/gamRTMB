@@ -4,7 +4,7 @@
 \alias{.build_design}
 \title{Build the design for every distributional parameter}
 \usage{
-.build_design(par_formulas, data, parnames, knots = NULL)
+.build_design(par_formulas, data, parnames, knots = NULL, sparse = "auto")
 }
 \arguments{
 \item{par_formulas}{List of one-sided formulas, one per parameter.}
@@ -14,6 +14,9 @@
 \item{parnames}{The family's modelled parameters.}
 
 \item{knots}{Passed to \code{\link[mgcv:smoothCon]{mgcv::smoothCon()}}.}
+
+\item{sparse}{Whether a smooth with a single sparse penalty may skip
+\code{\link[mgcv:smooth2random]{mgcv::smooth2random()}} and keep that penalty; see \code{\link[=.gmrf_block]{.gmrf_block()}}.}
 }
 \value{
 A design object: per-parameter parts (parametric matrix, terms,

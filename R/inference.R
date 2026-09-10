@@ -28,13 +28,15 @@
 #' joint negative log-likelihood in the coefficients is
 #' \deqn{H = H_{data} + S, \quad S = diag(0 \text{ for fixed}, 1/\sigma_k^2
 #' \text{ for block } k),}
-#' the penalty being exactly diagonal in the [mgcv::smooth2random()] basis.
-#' Wood's effective degrees of freedom, \eqn{tr((X'WX + S)^{-1} X'WX)},
-#' therefore generalise to
+#' with \eqn{S} block diagonal -- \eqn{\sigma_k^{-2} I} in the
+#' [mgcv::smooth2random()] basis, \eqn{\sigma_k^{-2} Q_k} for a block that
+#' kept its own sparse penalty. Wood's effective degrees of freedom,
+#' \eqn{tr((X'WX + S)^{-1} X'WX)}, therefore generalise to
 #' \deqn{F = H^{-1} H_{data} = I - H^{-1} S, \quad
-#'       edf_j = 1 - s_j [H^{-1}]_{jj},}
-#' so only the diagonal of \eqn{H^{-1}} is needed: null-space coefficients
-#' contribute exactly 1 and penalized ones between 0 and 1.
+#'       edf_j = 1 - [H^{-1} S]_{jj},}
+#' so only the diagonal of \eqn{H^{-1} S} is needed, and that comes from a
+#' sparse solve rather than a full inverse. Null-space coefficients contribute
+#' exactly 1 and penalized ones between 0 and 1.
 #'
 #' Checked against [mgcv::gaulss()], which agrees to three decimals on both
 #' untied and `id`-tied models.
@@ -59,13 +61,8 @@ edf.gamRTMB <- function(object, ...) {
     stop("effective degrees of freedom need the coefficients in the random ",
          "vector, i.e. method = \"REML\" with engine = \"laplace\"")
   D <- object$design
-  dH <- Matrix::diag(Matrix::solve(ph$H))
   ls <- object$log_sigma
-
-  sj <- numeric(length(dH))                       # the diagonal penalty
-  for (k in seq_along(D$blocks))
-    sj[ph$i_b[D$blocks[[k]]$idx]] <- exp(-2 * ls[k])
-  edf_all <- 1 - sj * dH
+  edf_all <- 1 - Matrix::diag(Matrix::solve(ph$H, .penalty_matrix(D, ls, ph)))
 
   rows <- list()
   for (p in D$parnames) for (j in seq_along(D$parts[[p]]$smooths)) {
@@ -82,6 +79,34 @@ edf.gamRTMB <- function(object, ...) {
     data.frame(parameter = character(), term = character(), edf = numeric())
   attr(res, "edf.total") <- sum(edf_all)
   res
+}
+
+#' The penalty, assembled in the Hessian's own ordering
+#'
+#' \eqn{S} is block diagonal with one block per penalized block of
+#' coefficients: \eqn{\sigma_k^{-2} I} for a block that went through
+#' [mgcv::smooth2random()], and \eqn{\sigma_k^{-2} Q_k} for one that kept a
+#' sparse penalty. Built sparse so that `solve(H, S)` stays a sparse solve
+#' rather than a full inverse.
+#'
+#' @keywords internal
+.penalty_matrix <- function(design, ls, ph) {
+  np <- nrow(ph$H)
+  ii <- jj <- integer(0); xx <- numeric(0)
+  for (k in seq_along(design$blocks)) {
+    bl <- design$blocks[[k]]
+    r <- ph$i_b[bl$idx]
+    lam <- exp(-2 * ls[k])
+    if (is.null(bl$Q)) {
+      ii <- c(ii, r); jj <- c(jj, r); xx <- c(xx, rep(lam, length(r)))
+    } else {
+      ## `bl$Q` is stored symmetric, and a symmetric sparse matrix keeps only
+      ## one triangle; going through "generalMatrix" first gets both.
+      tq <- Matrix::summary(as(as(bl$Q, "generalMatrix"), "TsparseMatrix"))
+      ii <- c(ii, r[tq$i]); jj <- c(jj, r[tq$j]); xx <- c(xx, lam * tq$x)
+    }
+  }
+  Matrix::sparseMatrix(i = ii, j = jj, x = xx, dims = c(np, np))
 }
 
 #' Where one smooth's coefficients live in the joint vectors

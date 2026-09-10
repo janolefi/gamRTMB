@@ -212,12 +212,15 @@
 #' @param data Model frame.
 #' @param parnames The family's modelled parameters.
 #' @param knots Passed to [mgcv::smoothCon()].
+#' @param sparse Whether a smooth with a single sparse penalty may skip
+#'   [mgcv::smooth2random()] and keep that penalty; see [.gmrf_block()].
 #' @return A design object: per-parameter parts (parametric matrix, terms,
 #'   xlevels, smooths), the stacked fixed-effect matrices, index bookkeeping
 #'   into `beta` and `b`, the penalized blocks, and the variance-component
 #'   grouping.
 #' @keywords internal
-.build_design <- function(par_formulas, data, parnames, knots = NULL) {
+.build_design <- function(par_formulas, data, parnames, knots = NULL,
+                          sparse = "auto") {
   n <- nrow(data)
 
   ## pass 1 -- interpret every formula and flatten the smooth specifications,
@@ -264,23 +267,37 @@
     for (j in seq_along(gp$smooth.spec)) {
       spec <- gp$smooth.spec[[j]]
       idv <- if (is.null(spec$id)) NA_character_ else as.character(spec$id)
-      scl <- if (is.na(idv))
+      build <- function(absorb) if (is.na(idv))
         mgcv::smoothCon(spec, data = data, knots = knots,
-                        absorb.cons = TRUE, null.space.penalty = FALSE)
+                        absorb.cons = absorb, null.space.penalty = FALSE)
       else {
         pd <- pooled[[idv]]; names(pd) <- spec$term
-        mgcv::smoothCon(spec, data = pd, knots = knots, absorb.cons = TRUE,
+        mgcv::smoothCon(spec, data = pd, knots = knots, absorb.cons = absorb,
                         n = n, dataX = data, null.space.penalty = FALSE)
       }
+      ## The sparse route needs the penalty as the basis constructor wrote
+      ## it, so the term is built unconstrained first and only rebuilt with
+      ## the constraint absorbed if it turns out not to qualify. Absorbing
+      ## the constraint is what would densify the penalty, so there is no
+      ## way to make this decision from the constrained object.
+      scl <- build(sparse == "never")
+      use_sp <- sparse != "never" && length(scl[[1L]]$S) == 1L &&
+        .use_sparse(scl[[1L]]$S[[1L]], sparse)
+      if (!use_sp && sparse != "never") scl <- build(TRUE)
       for (sm in scl) {
         if (isTRUE(sm$fixed))
           stop("fx = TRUE smooths are not supported: there is no penalized ",
                "part to make random")
-        re <- mgcv::smooth2random(sm, "", type = 2)
+        B <- if (use_sp) .gmrf_block(sm) else {
+          re <- mgcv::smooth2random(sm, "", type = 2)
+          list(Xr = lapply(re$rand, as.matrix), Xf = re$Xf,
+               Tmap = .reconstruct_map(re),
+               Q = vector("list", length(re$rand)), intrinsic = FALSE)
+        }
         smooths[[length(smooths) + 1L]] <- list(
-          sm = sm, re = re, Tmap = .reconstruct_map(re),
-          label = sm$label, id = idv,
-          Xr = lapply(re$rand, as.matrix), Xf = re$Xf,
+          sm = sm, Tmap = B$Tmap, label = sm$label, id = idv,
+          Xr = B$Xr, Xf = B$Xf, Q = B$Q,
+          sparse = use_sp, intrinsic = B$intrinsic,
           plot1d = .plot_spec(sm, data))
       }
     }
@@ -314,6 +331,7 @@
       loc <- integer(0)
       for (k in seq_along(s$Xr)) {
         q <- ncol(s$Xr[[k]])
+        Qk <- s$Q[[k]]
         blocks[[length(blocks) + 1L]] <- list(
           par = p, smooth = j, penalty = k, q = q,
           label = if (length(s$Xr) > 1L) paste0(s$label, ".s", k) else s$label,
@@ -321,13 +339,36 @@
           ## unless an id ties this penalty across a group
           sig_key = if (is.na(s$id)) paste(p, j, k, sep = ":")
                     else paste0("id", s$id, ":", k),
-          idx = nb + seq_len(q), X = s$Xr[[k]])
+          idx = nb + seq_len(q), X = s$Xr[[k]], Q = Qk,
+          ## `sigma` scales an iid coefficient directly, but a GMRF
+          ## coefficient only through the penalty: its conditional standard
+          ## deviation is sigma / sqrt(Q_ii). Recording a typical Q_ii lets
+          ## one starting-value rule serve both.
+          qscale = if (is.null(Qk)) 1 else
+            sqrt(mean(Matrix::diag(Qk))))
         loc <- c(loc, length(blocks)); nb <- nb + q
       }
       parts[[p]]$smooths[[j]]$block_ids <- loc
       ids_p <- c(ids_p, loc)
     }
     par_blocks[[p]] <- ids_p
+  }
+
+  ## A corner-constrained intrinsic field pins one coefficient per connected
+  ## component at zero instead of centring the whole term, so the level it
+  ## gives up has to land somewhere. With an intercept that is exactly what
+  ## happens and the fit is identical to the sum-to-zero version; without one,
+  ## the constraint silently forces the dropped region's effect to zero, which
+  ## is a different model and not the one anybody meant.
+  for (p in parnames) {
+    if (!any(vapply(parts[[p]]$smooths, function(s) isTRUE(s$intrinsic), NA)))
+      next
+    if (!"(Intercept)" %in% colnames(parts[[p]]$Xpara))
+      stop("'", p, "' has an intrinsic GMRF smooth but no intercept. Such a ",
+           "term is identified only up to a constant per connected component, ",
+           "which the intercept absorbs; without one, the constraint would ",
+           "pin one region's effect at zero instead. Add an intercept, or fit ",
+           "this term with sparse = \"never\".", call. = FALSE)
   }
 
   ## Overlapping unpenalized null spaces make the fixed-effect design rank

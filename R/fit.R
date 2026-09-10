@@ -7,10 +7,18 @@
 
 #' Build the joint negative log-likelihood
 #'
-#' The penalized coefficients carry an iid \eqn{N(0, \sigma_k^2)} prior, one
-#' variance per penalized block. Null-space coefficients live in `beta` and
-#' are never given a prior. Nothing is shared across smooths or across
-#' distributional parameters unless an `id` says so.
+#' The penalized coefficients carry a mean-zero Gaussian prior, one variance
+#' per penalized block. Which Gaussian depends on the route the block took
+#' through [.build_design()]: after [mgcv::smooth2random()] the penalty is the
+#' identity and the prior is iid \eqn{N(0, \sigma_k^2)}, while a block that
+#' kept its own sparse penalty gets \eqn{N(0, \sigma_k^2 Q_k^{-1})} through
+#' [RTMB::dgmrf()]. The two are the same model written two ways; keeping
+#' \eqn{Q_k} sparse is what lets a Markov random field over many regions stay
+#' affordable, since `smooth2random`'s rotation would fill it in.
+#'
+#' Null-space coefficients live in `beta` and are never given a prior.
+#' Nothing is shared across smooths or across distributional parameters
+#' unless an `id` says so.
 #'
 #' Prior weights multiply each observation's log-density contribution, as in
 #' [stats::glm()]. Offsets are added to the relevant parameter's linear
@@ -39,9 +47,13 @@
     yo <- RTMB::OBS(y)
     jnll <- 0
 
-    for (k in seq_along(blocks))
-      jnll <- jnll - sum(dnorm(b[blocks[[k]]$idx], 0, exp(log_sigma[k]),
-                               log = TRUE))
+    for (k in seq_along(blocks)) {
+      bl <- blocks[[k]]
+      jnll <- jnll - if (is.null(bl$Q))
+        sum(dnorm(b[bl$idx], 0, exp(log_sigma[k]), log = TRUE))
+      else
+        RTMB::dgmrf(b[bl$idx], 0, bl$Q * exp(-2 * log_sigma[k]), log = TRUE)
+    }
 
     theta <- list()
     for (p in parnames) {
@@ -91,8 +103,8 @@
   }
   sc <- family$eta_scale(y)
   ls0 <- vapply(design$blocks, function(bl) {
-    rs <- sqrt(mean(rowSums(bl$X^2)))
-    log(max(frac * sc[[bl$par]] / max(rs, 1e-8), 1e-4))
+    rs <- sqrt(mean(Matrix::rowSums(bl$X^2)))
+    log(max(frac * sc[[bl$par]] * bl$qscale / max(rs, 1e-8), 1e-4))
   }, numeric(1))
   pars <- list(beta = beta0, b = numeric(design$nb),
                log_sigma = stats::ave(ls0, design$sig_group))
@@ -161,6 +173,20 @@
 #' density's own (`xi`, `omega`, `alpha` for a skew normal), not generic
 #' location/scale/shape labels.
 #'
+#' @section Sparse penalties:
+#' A smooth whose penalty is a sparse precision matrix -- `bs = "mrf"` over an
+#' adjacency graph, a random walk, or any precision supplied through
+#' `xt = list(penalty = )` -- can skip [mgcv::smooth2random()]. That rotation
+#' makes the coefficients iid, which is convenient but fills the penalty in
+#' completely; keeping it instead and giving the block an
+#' \eqn{N(0, \sigma^2 Q^{-1})} prior through [RTMB::dgmrf()] is the same
+#' model at a fraction of the cost. The `sparse` argument controls this.
+#'
+#' An intrinsic field is corner-constrained rather than sum-to-zero
+#' constrained, since the latter is what destroys the sparsity. The two are
+#' equivalent up to a constant absorbed by the intercept, so such a term needs
+#' its parameter to have one. See [.null_space_drop()].
+#'
 #' @section REML:
 #' With `method = "REML"` the mean-structure coefficients join the random
 #' vector alongside the spline coefficients, so the same Laplace
@@ -203,6 +229,14 @@
 #'   linear-predictor scale. See [.init_pars()]. Raise it if a fit converges
 #'   to an over-smooth solution, lower it if the objective is not finite at
 #'   the starting values.
+#' @param sparse How to treat a smooth whose single penalty is already sparse
+#'   -- a Markov random field, a random walk, a supplied GMRF precision.
+#'   `"auto"` (default) keeps the penalty and gives the block a
+#'   [RTMB::dgmrf()] prior when it has at least 50 coefficients and is at
+#'   most 20% nonzero, and sends everything else through
+#'   [mgcv::smooth2random()] as usual. `"never"` is the old behaviour;
+#'   `"always"` takes the sparse route for every single-penalty smooth, which
+#'   is mainly useful for checking that the two agree. See [.gmrf_block()].
 #' @param joint_precision Ask [RTMB::sdreport()] for the joint precision
 #'   matrix, which [predict()] needs for standard errors. On by default; turn
 #'   it off to save time and memory on large models where bands are not
@@ -225,10 +259,12 @@ gamRTMB <- function(formula, family = fam("norm"), data, weights = NULL,
                     na.action = stats::na.omit, knots = NULL,
                     method = c("REML", "ML"),
                     engine = c("laplace", "efs"), sigma_frac = 0.05,
+                    sparse = c("auto", "never", "always"),
                     joint_precision = TRUE, start = NULL, silent = TRUE,
                     control = list()) {
   method <- match.arg(method)
   engine <- match.arg(engine)
+  sparse <- match.arg(sparse)
   if (!inherits(family, "gamRTMB_family"))
     stop("`family` must be a gamRTMB_family, e.g. fam(\"norm\") or ",
          "fam(\"gamma2\"); see families()")
@@ -239,7 +275,8 @@ gamRTMB <- function(formula, family = fam("norm"), data, weights = NULL,
   pf <- .parse_formula(formula, family$parnames)
   md <- .model_data(pf$response, pf$par_formulas, data, w, na.action)
   data <- md$data; y <- md$y; w <- md$weights
-  design <- .build_design(pf$par_formulas, data, family$parnames, knots = knots)
+  design <- .build_design(pf$par_formulas, data, family$parnames,
+                          knots = knots, sparse = sparse)
   fx <- .resolve_fixed(family, data, length(y))
   pars <- .init_pars(design, family, y, sigma_frac, start)
   nll <- .make_nll(design, family, y, fx, w)

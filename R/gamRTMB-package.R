@@ -28,6 +28,7 @@
 ## S3 methods can only be registered for generics visible in this namespace,
 ## and these two are not among what RTMB re-exports.
 #' @importFrom stats nobs vcov residuals
+#' @importFrom methods as
 "_PACKAGE"
 NULL
 

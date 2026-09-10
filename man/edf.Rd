@@ -25,13 +25,15 @@ explicitly. At the fitted smoothing parameters the penalized Hessian of the
 joint negative log-likelihood in the coefficients is
 \deqn{H = H_{data} + S, \quad S = diag(0 \text{ for fixed}, 1/\sigma_k^2
 \text{ for block } k),}
-the penalty being exactly diagonal in the \code{\link[mgcv:smooth2random]{mgcv::smooth2random()}} basis.
-Wood's effective degrees of freedom, \eqn{tr((X'WX + S)^{-1} X'WX)},
-therefore generalise to
+with \eqn{S} block diagonal -- \eqn{\sigma_k^{-2} I} in the
+\code{\link[mgcv:smooth2random]{mgcv::smooth2random()}} basis, \eqn{\sigma_k^{-2} Q_k} for a block that
+kept its own sparse penalty. Wood's effective degrees of freedom,
+\eqn{tr((X'WX + S)^{-1} X'WX)}, therefore generalise to
 \deqn{F = H^{-1} H_{data} = I - H^{-1} S, \quad
-      edf_j = 1 - s_j [H^{-1}]_{jj},}
-so only the diagonal of \eqn{H^{-1}} is needed: null-space coefficients
-contribute exactly 1 and penalized ones between 0 and 1.
+      edf_j = 1 - [H^{-1} S]_{jj},}
+so only the diagonal of \eqn{H^{-1} S} is needed, and that comes from a
+sparse solve rather than a full inverse. Null-space coefficients contribute
+exactly 1 and penalized ones between 0 and 1.
 }
 \details{
 Checked against \code{\link[mgcv:gaulss]{mgcv::gaulss()}}, which agrees to three decimals on both

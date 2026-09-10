@@ -41,6 +41,7 @@ Imports:
     RTMB,
     RTMBdist (>= 1.1.0),
     Matrix,
+    methods,
     graphics,
     grDevices,
     stats,

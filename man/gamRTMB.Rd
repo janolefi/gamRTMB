@@ -17,6 +17,7 @@ gamRTMB(
   method = c("REML", "ML"),
   engine = c("laplace", "efs"),
   sigma_frac = 0.05,
+  sparse = c("auto", "never", "always"),
   joint_precision = TRUE,
   start = NULL,
   silent = TRUE,
@@ -56,6 +57,15 @@ values: each smooth starts contributing this fraction of its parameter's
 linear-predictor scale. See \code{\link[=.init_pars]{.init_pars()}}. Raise it if a fit converges
 to an over-smooth solution, lower it if the objective is not finite at
 the starting values.}
+
+\item{sparse}{How to treat a smooth whose single penalty is already sparse
+-- a Markov random field, a random walk, a supplied GMRF precision.
+\code{"auto"} (default) keeps the penalty and gives the block a
+\code{\link[RTMB:MVgauss]{RTMB::dgmrf()}} prior when it has at least 50 coefficients and is at
+most 20\% nonzero, and sends everything else through
+\code{\link[mgcv:smooth2random]{mgcv::smooth2random()}} as usual. \code{"never"} is the old behaviour;
+\code{"always"} takes the sparse route for every single-penalty smooth, which
+is mainly useful for checking that the two agree. See \code{\link[=.gmrf_block]{.gmrf_block()}}.}
 
 \item{joint_precision}{Ask \code{\link[RTMB:TMB-interface]{RTMB::sdreport()}} for the joint precision
 matrix, which \code{\link[=predict]{predict()}} needs for standard errors. On by default; turn
@@ -102,6 +112,22 @@ distributional parameter gets a one-sided formula:
 declares but the formula omits are given \code{~1}. Parameter names are the
 density's own (\code{xi}, \code{omega}, \code{alpha} for a skew normal), not generic
 location/scale/shape labels.
+}
+
+\section{Sparse penalties}{
+
+A smooth whose penalty is a sparse precision matrix -- \code{bs = "mrf"} over an
+adjacency graph, a random walk, or any precision supplied through
+\code{xt = list(penalty = )} -- can skip \code{\link[mgcv:smooth2random]{mgcv::smooth2random()}}. That rotation
+makes the coefficients iid, which is convenient but fills the penalty in
+completely; keeping it instead and giving the block an
+\eqn{N(0, \sigma^2 Q^{-1})} prior through \code{\link[RTMB:MVgauss]{RTMB::dgmrf()}} is the same
+model at a fraction of the cost. The \code{sparse} argument controls this.
+
+An intrinsic field is corner-constrained rather than sum-to-zero
+constrained, since the latter is what destroys the sparsity. The two are
+equivalent up to a constant absorbed by the intercept, so such a term needs
+its parameter to have one. See \code{\link[=.null_space_drop]{.null_space_drop()}}.
 }
 
 \section{REML}{
