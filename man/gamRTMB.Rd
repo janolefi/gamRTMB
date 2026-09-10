@@ -16,7 +16,7 @@ gamRTMB(
   knots = NULL,
   method = c("REML", "ML"),
   engine = c("laplace", "efs"),
-  sigma_frac = 0.2,
+  sigma_frac = 0.05,
   joint_precision = TRUE,
   start = NULL,
   silent = TRUE,
@@ -52,7 +52,10 @@ many in the fit's summary.}
 \item{engine}{Fitting engine; only \code{"laplace"} is implemented.}
 
 \item{sigma_frac}{Tuning constant for the variance-component starting
-values; see \code{\link[=.init_pars]{.init_pars()}}.}
+values: each smooth starts contributing this fraction of its parameter's
+linear-predictor scale. See \code{\link[=.init_pars]{.init_pars()}}. Raise it if a fit converges
+to an over-smooth solution, lower it if the objective is not finite at
+the starting values.}
 
 \item{joint_precision}{Ask \code{\link[RTMB:TMB-interface]{RTMB::sdreport()}} for the joint precision
 matrix, which \code{\link[=predict]{predict()}} needs for standard errors. On by default; turn
