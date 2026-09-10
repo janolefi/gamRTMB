@@ -22,6 +22,9 @@
   : Predictions from a gamRTMB fit
 - [`residuals(`*`<gamRTMB>`*`)`](https://janolefi.github.io/gamRTMB/reference/residuals.gamRTMB.md)
   : Randomised quantile (pseudo) residuals
+- [`smooth.construct(`*`<spde.smooth.spec>`*`)`](https://janolefi.github.io/gamRTMB/reference/smooth.construct.spde.smooth.spec.md)
+  [`Predict.matrix(`*`<spde.smooth>`*`)`](https://janolefi.github.io/gamRTMB/reference/smooth.construct.spde.smooth.spec.md)
+  : Matern SPDE smooth
 - [`summary(`*`<gamRTMB>`*`)`](https://janolefi.github.io/gamRTMB/reference/summary.gamRTMB.md)
   [`print(`*`<summary.gamRTMB>`*`)`](https://janolefi.github.io/gamRTMB/reference/summary.gamRTMB.md)
   : Summarise a gamRTMB fit

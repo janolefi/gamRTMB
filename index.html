@@ -142,7 +142,7 @@
 <tr>
 <td>Spatial</td>
 <td>
-<code>bs="mrf"</code> Markov random fields over an adjacency graph, or any precision matrix via <code>xt=list(penalty=)</code>; kept sparse, so a few thousand regions is routine</td>
+<code>bs="mrf"</code> Markov random fields over an adjacency graph, or any precision matrix via <code>xt=list(penalty=)</code>; <code>bs="spde"</code> Matern fields on an <a href="https://cran.r-project.org/package=fmesher" class="external-link">fmesher</a> mesh. Both kept sparse, so a few thousand regions or mesh nodes is routine</td>
 </tr>
 <tr>
 <td>Criterion</td>
@@ -171,7 +171,7 @@
 <div class="section level2">
 <h2 id="status">Status<a class="anchor" aria-label="anchor" href="#status"></a>
 </h2>
-<p>Early but checked. EDF and fitted values agree with <code>mgcv::gam(family = gaulss())</code> to three decimals, with and without shared smoothing parameters; <code><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict()</a></code> on the fitting data reproduces the in-sample linear predictors to machine precision; and quantile standard errors match both an analytic special case and simulation from the joint posterior. The sparse GMRF route is a reparameterisation rather than an approximation, and is checked against the dense one: log-likelihood, EDF, AIC, fitted values, predictions and their standard errors all agree, on Markov random fields and on ordinary smooths alike.</p>
+<p>Early but checked. EDF and fitted values agree with <code>mgcv::gam(family = gaulss())</code> to three decimals, with and without shared smoothing parameters; <code><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict()</a></code> on the fitting data reproduces the in-sample linear predictors to machine precision; and quantile standard errors match both an analytic special case and simulation from the joint posterior. The sparse GMRF route is a reparameterisation rather than an approximation, and is checked against the dense one: log-likelihood, EDF, AIC, fitted values, predictions and their standard errors all agree, on Markov random fields and on ordinary smooths alike. The SPDE precision matches the closed form <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi>τ</mi><mn>2</mn></msup><mo stretchy="false" form="prefix">(</mo><msup><mi>κ</mi><mn>4</mn></msup><mi>C</mi><mo>+</mo><mn>2</mn><msup><mi>κ</mi><mn>2</mn></msup><msub><mi>G</mi><mn>1</mn></msub><mo>+</mo><msub><mi>G</mi><mn>2</mn></msub><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">\tau^2(\kappa^4 C + 2\kappa^2 G_1 + G_2)</annotation></semantics></math> to 5e-16, and the fitted range and marginal standard deviation approach their true values as the sample grows.</p>
 <p>Not supported: <code>te()</code> (mgcv itself declines <code>smooth2random(type = 2)</code> for it — use <code>t2()</code>), <code>fx = TRUE</code>, and smooths whose unpenalized null spaces overlap (use a shrinkage basis, <code>bs = "ts"</code>). Not yet implemented: smooth-term p-values, 2-D smooth plots, and an extended Fellner–Schall fitting engine as an alternative to the Laplace one — <code>dev/NOTES-fellner-schall.md</code> records the derivation and the seams it needs.</p>
 </div>
 </div>
