@@ -10,8 +10,8 @@ RTMBdist.
 ``` r
 gamRTMB(
   formula,
-  family = fam("norm"),
   data,
+  family = fam("norm"),
   weights = NULL,
   na.action = stats::na.omit,
   knots = NULL,
@@ -43,15 +43,15 @@ fitted(object, ...)
   [`list()`](https://rdrr.io/r/base/list.html) of per-parameter
   formulas.
 
+- data:
+
+  A data frame. Every model variable must be a column of it.
+
 - family:
 
   A `gamRTMB_family`, from
   [`fam()`](https://janolefi.github.io/gamRTMB/reference/fam.md). See
   [`families()`](https://janolefi.github.io/gamRTMB/reference/families.md).
-
-- data:
-
-  A data frame. Every model variable must be a column of it.
 
 - weights:
 
