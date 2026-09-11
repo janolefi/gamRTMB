@@ -217,8 +217,8 @@
 #'
 #' @param formula A two-sided formula whose right-hand side is a `list()` of
 #'   per-parameter formulas.
-#' @param family A `gamRTMB_family`, from [fam()]. See [families()].
 #' @param data A data frame. Every model variable must be a column of it.
+#' @param family A `gamRTMB_family`, from [fam()]. See [families()].
 #' @param weights Optional prior weights, evaluated in `data`. As in
 #'   [stats::glm()], each observation's log-density contribution is multiplied
 #'   by its weight.
@@ -259,7 +259,7 @@
 #' fit
 #' edf(fit)
 #' @export
-gamRTMB <- function(formula, family = fam("norm"), data, weights = NULL,
+gamRTMB <- function(formula, data, family = fam("norm"), weights = NULL,
                     na.action = stats::na.omit, knots = NULL,
                     method = c("REML", "ML"),
                     engine = c("laplace", "efs"), sigma_frac = 0.05,

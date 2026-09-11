@@ -9,8 +9,8 @@
 \usage{
 gamRTMB(
   formula,
-  family = fam("norm"),
   data,
+  family = fam("norm"),
   weights = NULL,
   na.action = stats::na.omit,
   knots = NULL,
@@ -34,9 +34,9 @@ gamRTMB(
 \item{formula}{A two-sided formula whose right-hand side is a \code{list()} of
 per-parameter formulas.}
 
-\item{family}{A \code{gamRTMB_family}, from \code{\link[=fam]{fam()}}. See \code{\link[=families]{families()}}.}
-
 \item{data}{A data frame. Every model variable must be a column of it.}
+
+\item{family}{A \code{gamRTMB_family}, from \code{\link[=fam]{fam()}}. See \code{\link[=families]{families()}}.}
 
 \item{weights}{Optional prior weights, evaluated in \code{data}. As in
 \code{\link[stats:glm]{stats::glm()}}, each observation's log-density contribution is multiplied
