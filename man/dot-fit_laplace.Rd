@@ -12,8 +12,16 @@
   joint_precision,
   silent,
   control,
-  family
+  family,
+  inner_control = list(),
+  repars = NULL
 )
+}
+\arguments{
+\item{inner_control}{Passed to \code{\link[RTMB:TMB-interface]{RTMB::MakeADFun()}}'s \code{inner.control}.}
+
+\item{repars}{Function of a \code{sigma_frac} returning a fresh starting
+parameter list, used to walk the ladder. \code{NULL} disables the retries.}
 }
 \description{
 Declares the coefficients random so that RTMB supplies the marginal
@@ -26,4 +34,16 @@ estimated value. An \code{NA} level there would instead fix an entry at its
 starting value, which is how a user-specified smoothing parameter would be
 implemented.
 }
+\section{Getting started at all}{
+
+Before any of that, the marginal objective has to be finite at the starting
+values, and on the harder families it often is not. That is handled in two
+steps, both of which are about failing cheaply rather than about finding a
+better start: \code{\link[=.probe_finite]{.probe_finite()}} asks the question with a short inner
+iteration cap, and a \code{FALSE} sends the caller to the next rung of
+\code{\link[=.sigma_frac_ladder]{.sigma_frac_ladder()}}. If every rung fails, the fit proceeds from the
+original starting values under the full cap, so the ladder can only add
+fits, never remove one.
+}
+
 \keyword{internal}

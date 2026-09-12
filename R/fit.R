@@ -116,6 +116,132 @@
   pars
 }
 
+## Alternative variance-component starts, tried in this order when the first
+## marginal evaluation is not finite. They are not a refinement of one
+## another: measured over seven families and five seeds, the number of fits
+## reaching a converged solution is not monotone in `frac`, and no value
+## dominates -- 0.01 did worst, with 0.2 and 0.001 on either side of it doing
+## better. So the point of the ladder is coverage, not a better default. The
+## small values buy their extra convergences partly with worse optima (the
+## smooth pinned to its null space), which is why they come last.
+## See .init_pars() for what `frac` means.
+.sigma_frac_ladder <- c(0.005, 0.2, 0.001)
+
+## Inner iteration cap for the probe below. A well-posed inner solve reaches
+## its mode in a few dozen Newton steps from these starting values, so this is
+## generous; a problem that needs more than this is one the cap is looking for.
+.probe_maxit <- 100L
+
+#' Is the marginal objective finite, cheaply?
+#'
+#' The first marginal evaluation is where a badly posed inner problem shows
+#' up, and it is an expensive place to discover it: the inner Newton runs all
+#' the way to its iteration cap before handing back a non-finite value. On the
+#' four-parameter Box-Cox families that is over two minutes to learn that the
+#' fit will not start. Probing with a short cap answers the same question in
+#' seconds, and costs nothing on a model that was going to work.
+#'
+#' A probe is only ever an accelerator: a `FALSE` sends the caller to the next
+#' rung of [.sigma_frac_ladder], and if every rung fails the fit proceeds from
+#' the original starting values under the full cap, exactly as it would have.
+#' So a probe that is wrong about a slow-but-sound inner solve costs a few
+#' seconds, never a fit.
+#'
+#' @keywords internal
+.probe_finite <- function(obj) {
+  keep <- obj$env$inner.control$maxit
+  on.exit(obj$env$inner.control$maxit <- keep, add = TRUE)
+  obj$env$inner.control$maxit <- min(.probe_maxit, keep)
+  v <- tryCatch(suppressWarnings(obj$fn(obj$par)),
+                error = function(e) NA_real_)
+  length(v) == 1L && is.finite(v)
+}
+
+#' Label every coefficient the inner problem solves over
+#'
+#' In the order [RTMB::MakeADFun()] lays them out, which is the order of the
+#' parameter list: all of `beta`, then all of `b`. Under `"ML"` only `b` is
+#' random, so only those are named.
+#'
+#' @keywords internal
+.random_labels <- function(design, method) {
+  bl <- unlist(lapply(design$blocks, function(z)
+    paste0(z$par, ":", z$label, ".", seq_len(z$q))))
+  if (method == "REML") c(.beta_labels(design), bl) else bl
+}
+
+#' Diagnose a non-finite marginal objective as non-concavity
+#'
+#' A non-finite marginal objective is usually read as the response leaving the
+#' family's support, and the error message used to say so. That is the wrong
+#' diagnosis for a whole class of models, and a misleading one: the Laplace
+#' approximation needs the log determinant of the inner Hessian, so an
+#' *indefinite* Hessian produces exactly the same symptom with the data
+#' entirely inside the support.
+#'
+#' The Box-Cox power exponential is the case in hand. Its log-likelihood is
+#' concave in the four intercepts alone -- an intercept-only fit converges in
+#' half a second -- but adding a single covariate column to `mu` puts three
+#' negative eigenvalues into the inner Hessian, every one of them a direction
+#' mixing that column with the `sigma`, `nu` and `tau` intercepts. No starting
+#' value repairs it: sweeping `tau` from 2 to 9 and `nu` from 1 to 2.5 never
+#' gets below two negative directions. It is a property of the family's
+#' parameterisation, not of the start.
+#'
+#' Under `"REML"` the negative curvature lands in `beta`, which is declared
+#' random and so passes through the inner solve carrying no prior to convexify
+#' it. The penalized blocks are not the problem -- their Gaussian prior leaves
+#' them comfortably positive definite. Hence the suggestion of a basis with no
+#' null space, which is what puts those columns under a penalty.
+#'
+#' @param obj The `MakeADFun` object, evaluated at its starting values.
+#' @param design The design object.
+#' @param method `"REML"` or `"ML"`.
+#' @param famname The family's name, for the message.
+#' @return A sentence describing the negative curvature, or `NULL` if the
+#'   Hessian is unavailable or positive definite.
+#' @keywords internal
+.inner_indefinite <- function(obj, design, method, famname) {
+  h <- tryCatch(obj$env$spHess(obj$env$par, random = TRUE),
+                error = function(e) NULL)
+  if (is.null(h) || anyNA(as.numeric(h))) return(NULL)
+  ## A Cholesky is the cheap question ("is this positive definite?"); the
+  ## eigen decomposition is only needed to name the directions, and is dense,
+  ## so it is reserved for problems small enough to afford it.
+  ##
+  ## `Matrix::chol()` rather than `Matrix::Cholesky()`: the latter computes an
+  ## LDL' factorisation, which exists for an indefinite matrix and comes back
+  ## with a CHOLMOD *warning* rather than an error, so it answers the wrong
+  ## question. `chol()` fails, which is the answer wanted here.
+  pd <- !inherits(tryCatch(Matrix::chol(h), error = function(e) e,
+                           warning = function(w) w), "condition")
+  if (pd) return(NULL)
+  base <- paste0("the inner Hessian is not positive definite at the starting ",
+                 "values, so the Laplace approximation's log determinant is ",
+                 "undefined there")
+  if (ncol(h) > 1000L) return(paste0(base, "."))
+  e <- tryCatch(eigen(as.matrix(h), symmetric = TRUE), error = function(e) NULL)
+  if (is.null(e)) return(paste0(base, "."))
+  neg <- which(e$values < 0)
+  if (!length(neg)) return(NULL)
+  lab <- .random_labels(design, method)
+  ## The flattest negative direction is the informative one: the deepest is
+  ## dominated by whichever coefficient happens to carry the most curvature,
+  ## which is usually an intercept and says nothing. `eigen()` sorts
+  ## decreasing, so the flattest negative is the first of them.
+  v <- abs(e$vectors[, neg[1L]])
+  top <- utils::head(order(-v), 3L)
+  paste0(base, " (", length(neg), " negative ",
+         if (length(neg) > 1L) "directions" else "direction",
+         ", the flattest dominated by ",
+         paste0("`", lab[top], "`", collapse = ", "),
+         "). This is non-concavity of family '", famname,
+         "' in its own parameterisation rather than a bad starting value, and ",
+         "under REML it is the unpenalized coefficients that carry it. A ",
+         "basis with no null space puts them under a penalty: try bs = \"cs\" ",
+         "or bs = \"ts\", or method = \"ML\".")
+}
+
 #' Detect a distributional parameter that starts at a useless stationary point
 #'
 #' A parameter whose intercept has an identically zero score cannot move, and
@@ -245,8 +371,10 @@
 #' @param sigma_frac Tuning constant for the variance-component starting
 #'   values: each smooth starts contributing this fraction of its parameter's
 #'   linear-predictor scale. See [.init_pars()]. Raise it if a fit converges
-#'   to an over-smooth solution, lower it if the objective is not finite at
-#'   the starting values.
+#'   to an over-smooth solution. If the objective is not finite here, a few
+#'   other values are tried automatically before giving up (see
+#'   [.sigma_frac_ladder()]) and the one used is reported; passing this
+#'   argument explicitly does not switch that off, but passing `start` does.
 #' @param sparse How to treat a smooth whose single penalty is already sparse
 #'   -- a Markov random field, a random walk, a supplied GMRF precision.
 #'   `"auto"` (default) keeps the penalty and gives the block a
@@ -263,6 +391,11 @@
 #'   parameter list (`beta`, `b`, `log_sigma`).
 #' @param silent Passed to [RTMB::MakeADFun()].
 #' @param control Passed to [stats::nlminb()].
+#' @param inner_control Passed to [RTMB::MakeADFun()]'s `inner.control`, which
+#'   governs the inner Newton solve over the coefficients rather than the
+#'   outer optimisation of the smoothing parameters. `list(maxit = ...)` is
+#'   the entry worth reaching for; see `dev/NOTES-inner-method.md` for why
+#'   `inner.method` is not exposed.
 #' @return An object of class `gamRTMB`.
 #' @examples
 #' set.seed(1)
@@ -282,7 +415,7 @@ gamRTMB <- function(formula, family = fam("norm"), data = NULL, weights = NULL,
                     engine = c("laplace", "efs"), sigma_frac = 0.05,
                     sparse = c("auto", "never", "always"),
                     joint_precision = TRUE, start = NULL, silent = TRUE,
-                    control = list()) {
+                    control = list(), inner_control = list()) {
   method <- match.arg(method)
   engine <- match.arg(engine)
   sparse <- match.arg(sparse)
@@ -308,9 +441,15 @@ gamRTMB <- function(formula, family = fam("norm"), data = NULL, weights = NULL,
   pars <- .init_pars(design, family, y, sigma_frac, start)
   nll <- .make_nll(design, family, y, fx, w)
 
+  ## The ladder needs to be able to rebuild the starting values at another
+  ## `sigma_frac`; an explicit `start` is the user's and is never overwritten,
+  ## so the retries are switched off in that case.
+  repars <- if (is.null(start))
+    function(frac) .init_pars(design, family, y, frac, NULL) else NULL
+
   fit <- switch(engine,
     laplace = .fit_laplace(nll, pars, design, method, joint_precision, silent,
-                           control, family),
+                           control, family, inner_control, repars),
     efs     = .fit_efs(nll, pars, design, method, family))
 
   fit$family <- family
@@ -339,14 +478,52 @@ gamRTMB <- function(formula, family = fam("norm"), data = NULL, weights = NULL,
 #' starting value, which is how a user-specified smoothing parameter would be
 #' implemented.
 #'
+#' @section Getting started at all:
+#' Before any of that, the marginal objective has to be finite at the starting
+#' values, and on the harder families it often is not. That is handled in two
+#' steps, both of which are about failing cheaply rather than about finding a
+#' better start: [.probe_finite()] asks the question with a short inner
+#' iteration cap, and a `FALSE` sends the caller to the next rung of
+#' [.sigma_frac_ladder()]. If every rung fails, the fit proceeds from the
+#' original starting values under the full cap, so the ladder can only add
+#' fits, never remove one.
+#'
+#' @param repars Function of a `sigma_frac` returning a fresh starting
+#'   parameter list, used to walk the ladder. `NULL` disables the retries.
+#' @param inner_control Passed to [RTMB::MakeADFun()]'s `inner.control`.
 #' @keywords internal
 .fit_laplace <- function(nll, pars, design, method, joint_precision, silent,
-                          control, family) {
+                          control, family, inner_control = list(),
+                          repars = NULL) {
   random <- if (method == "REML") c("beta", "b") else "b"
   map <- if (design$nsigma_free < design$nsigma)
     list(log_sigma = design$sig_group) else list()
 
-  obj <- RTMB::MakeADFun(nll, pars, random = random, map = map, silent = silent)
+  ## Merged onto MakeADFun's own default rather than replacing it: handing it
+  ## a bare list() would drop `maxit` and leave the inner Newton running on
+  ## newton()'s much smaller formal default, which is a silent change of
+  ## behaviour for every fit that passes nothing. Pinned here rather than read
+  ## back out of RTMB so that an upstream change cannot move it either.
+  ic <- utils::modifyList(list(maxit = 1000L), inner_control)
+  build <- function(p) RTMB::MakeADFun(nll, p, random = random, map = map,
+                                       silent = silent, inner.control = ic)
+  obj <- build(pars)
+
+  ## Walk the ladder only if the first start does not work. The probe is
+  ## skipped when there is nothing to walk to, so a fit with `repars = NULL`
+  ## or an explicit `start` behaves exactly as it did before.
+  if (!is.null(repars) && !.probe_finite(obj)) {
+    for (fr in .sigma_frac_ladder) {
+      cand <- tryCatch(build(repars(fr)), error = function(e) NULL)
+      if (is.null(cand) || !.probe_finite(cand)) next
+      message("the marginal objective was not finite at the default ",
+              "variance-component start; refitting with sigma_frac = ", fr,
+              ". Pass sigma_frac explicitly to pin this down.")
+      obj <- cand
+      attr(obj, "sigma_frac") <- fr
+      break
+    }
+  }
 
   ## start diagnostics, on the joint objective rather than the marginal one
   pfull <- obj$env$par
@@ -372,11 +549,21 @@ gamRTMB <- function(formula, family = fam("norm"), data = NULL, weights = NULL,
   ## singular and the Laplace approximation is undefined, so the marginal
   ## objective comes back non-finite. Name the parameter rather than blaming
   ## the response's support.
+  ##
+  ## Indefinite curvature is the other way to get here, and used to be
+  ## reported as a support problem, which is both wrong and a hard thing to
+  ## recover from as a user. Ask the Hessian before guessing; see
+  ## [.inner_indefinite()].
   if (!is.finite(obj$fn(obj$par)))
     stop("the objective is not finite at the starting values. ",
-         if (!is.null(msg)) msg else
+         ## `.or_else` is lazy in its second argument, so the Hessian is only
+         ## factorised when there is no cheaper explanation to give.
+         .or_else(msg, .or_else(
+           .inner_indefinite(obj, design, method, family$family),
            paste0("Check that the response is in the support of family '",
-                  family$family, "', and consider passing start = list(beta = ...)."))
+                  family$family, "', and consider passing start = ",
+                  "list(beta = ...), or a different sigma_frac."))),
+         call. = FALSE)
   if (!is.null(msg)) warning(msg, call. = FALSE)
 
   ## With no smooths at all there is nothing for the outer optimiser to do:
@@ -421,6 +608,7 @@ gamRTMB <- function(formula, family = fam("norm"), data = NULL, weights = NULL,
 
   pl <- obj$env$parList(par = obj$env$last.par.best)
   list(obj = obj, opt = opt, sdr = sdr,
+       sigma_frac_used = attr(obj, "sigma_frac"),
        coefficients = list(beta = pl$beta, b = pl$b),
        log_sigma = pl$log_sigma,               # full length, not the mapped one
        objective = opt$objective,

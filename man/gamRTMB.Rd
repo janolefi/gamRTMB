@@ -21,7 +21,8 @@ gamRTMB(
   joint_precision = TRUE,
   start = NULL,
   silent = TRUE,
-  control = list()
+  control = list(),
+  inner_control = list()
 )
 
 \method{nobs}{gamRTMB}(object, ...)
@@ -57,8 +58,10 @@ many in the fit's summary.}
 \item{sigma_frac}{Tuning constant for the variance-component starting
 values: each smooth starts contributing this fraction of its parameter's
 linear-predictor scale. See \code{\link[=.init_pars]{.init_pars()}}. Raise it if a fit converges
-to an over-smooth solution, lower it if the objective is not finite at
-the starting values.}
+to an over-smooth solution. If the objective is not finite here, a few
+other values are tried automatically before giving up (see
+\code{\link[=.sigma_frac_ladder]{.sigma_frac_ladder()}}) and the one used is reported; passing this
+argument explicitly does not switch that off, but passing \code{start} does.}
 
 \item{sparse}{How to treat a smooth whose single penalty is already sparse
 -- a Markov random field, a random walk, a supplied GMRF precision.
@@ -80,6 +83,12 @@ parameter list (\code{beta}, \code{b}, \code{log_sigma}).}
 \item{silent}{Passed to \code{\link[RTMB:TMB-interface]{RTMB::MakeADFun()}}.}
 
 \item{control}{Passed to \code{\link[stats:nlminb]{stats::nlminb()}}.}
+
+\item{inner_control}{Passed to \code{\link[RTMB:TMB-interface]{RTMB::MakeADFun()}}'s \code{inner.control}, which
+governs the inner Newton solve over the coefficients rather than the
+outer optimisation of the smoothing parameters. \code{list(maxit = ...)} is
+the entry worth reaching for; see \code{dev/NOTES-inner-method.md} for why
+\code{inner.method} is not exposed.}
 
 \item{object}{A \code{gamRTMB} fit.}
 
