@@ -9,8 +9,8 @@
 \usage{
 gamRTMB(
   formula,
-  data,
   family = fam("norm"),
+  data = NULL,
   weights = NULL,
   na.action = stats::na.omit,
   knots = NULL,
@@ -34,9 +34,10 @@ gamRTMB(
 \item{formula}{A two-sided formula whose right-hand side is a \code{list()} of
 per-parameter formulas.}
 
-\item{data}{A data frame. Every model variable must be a column of it.}
-
 \item{family}{A \code{gamRTMB_family}, from \code{\link[=fam]{fam()}}. See \code{\link[=families]{families()}}.}
+
+\item{data}{A data frame holding every model variable, or \code{NULL} (the
+default) to take them from the environment of \code{formula}.}
 
 \item{weights}{Optional prior weights, evaluated in \code{data}. As in
 \code{\link[stats:glm]{stats::glm()}}, each observation's log-density contribution is multiplied
@@ -112,6 +113,15 @@ distributional parameter gets a one-sided formula:
 declares but the formula omits are given \code{~1}. Parameter names are the
 density's own (\code{xi}, \code{omega}, \code{alpha} for a skew normal), not generic
 location/scale/shape labels.
+}
+
+\section{Data}{
+
+\code{data} is optional. Without it the model variables are looked up where the
+formula was written, as in \code{\link[stats:glm]{stats::glm()}} or \code{\link[mgcv:gam]{mgcv::gam()}}; they are
+collected into a data frame first, so everything downstream — \code{na.action},
+\code{\link[=predict]{predict()}}, the plots — sees the same rectangle either way. Variables
+found this way must all have the same length.
 }
 
 \section{Sparse penalties}{

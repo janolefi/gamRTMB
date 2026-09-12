@@ -92,6 +92,35 @@ test_that("bad input is caught before fitting", {
                "data frame")
 })
 
+test_that("data is optional, and the variables then come from the formula", {
+  d <- sim_ls(200)
+  ref <- gamRTMB(y ~ list(mean = ~ s(x1, k = 8), sd = ~ s(x2, k = 8)), data = d)
+
+  ## a local environment stands in for the global one, which a test must not
+  ## write to; the formula carries it, so that is where the lookup happens
+  e <- new.env()
+  for (v in names(d)) assign(v, d[[v]], envir = e)
+  f <- stats::as.formula("y ~ list(mean = ~ s(x1, k = 8), sd = ~ s(x2, k = 8))",
+                         env = e)
+  got <- gamRTMB(f)
+  expect_equal(got$objective, ref$objective, tolerance = 1e-8)
+  expect_equal(unname(stats::coef(got)$beta), unname(stats::coef(ref)$beta),
+               tolerance = 1e-6)
+  ## and the variables are rectangled, so everything downstream still works
+  expect_s3_class(got$data, "data.frame")
+  expect_equal(stats::predict(got)$mean, stats::predict(ref)$mean,
+               tolerance = 1e-6)
+
+  expect_error(gamRTMB(y ~ list(mean = ~ s(nosuchvar)), data = NULL),
+               "could not find the model variables")
+
+  ## a missing value drops the whole row, exactly as with a data argument
+  e2 <- new.env(); d2 <- d; d2$x1[3L] <- NA
+  for (v in names(d2)) assign(v, d2[[v]], envir = e2)
+  f2 <- stats::as.formula("y ~ list(mean = ~ s(x1, k = 8))", env = e2)
+  expect_identical(gamRTMB(f2)$dropped, 1L)
+})
+
 test_that("a non-finite gradient is diagnosed, not passed to the optimiser", {
   ## .flat_start must survive a gradient it cannot use
   expect_null(gamRTMB:::.flat_start(c(NA_real_, NaN), function(p) 0,

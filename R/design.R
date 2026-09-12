@@ -48,21 +48,37 @@
 #' returns the data with incomplete rows dropped, together with the response
 #' and prior weights aligned to it.
 #'
-#' Model variables must be columns of `data`. R would otherwise let them come
-#' from the calling environment, where dropping rows for missing values could
-#' silently misalign them against the response.
+#' With a `data` argument, model variables must be columns of it. R would
+#' otherwise let some of them come from the calling environment, where
+#' dropping rows for missing values could silently misalign them against the
+#' response. Without one, everything comes from `env` and is rectangled here,
+#' before any row is dropped, so the same guarantee holds.
 #'
 #' @param response The response expression (LHS of the outer formula).
 #' @param par_formulas One-sided formulas, one per distributional parameter.
-#' @param data A data frame.
+#' @param data A data frame, or `NULL` to look the variables up in `env`.
 #' @param weights Evaluated prior weights, or `NULL`.
 #' @param na.action Missing-data action, e.g. [stats::na.omit()].
+#' @param env Environment for the variables when `data` is `NULL`.
 #' @return `list(data, y, weights, dropped)`.
 #' @keywords internal
-.model_data <- function(response, par_formulas, data, weights, na.action) {
+.model_data <- function(response, par_formulas, data, weights, na.action,
+                        env = parent.frame()) {
   vars <- unique(c(all.vars(response),
                    unlist(lapply(par_formulas, function(f)
                      all.vars(mgcv::interpret.gam(f)$fake.formula)))))
+  if (is.null(data)) {
+    if (!length(vars)) stop("the model has no variables")
+    ## na.pass, so that the na.action below sees the whole set of model
+    ## variables at once and drops a row for a missing value anywhere in it
+    data <- tryCatch(
+      stats::model.frame(stats::reformulate(vars), data = env,
+                         na.action = stats::na.pass),
+      error = function(e)
+        stop("could not find the model variables where the formula was ",
+             "written: ", conditionMessage(e), "\nPass them in `data = `.",
+             call. = FALSE))
+  }
   extra <- setdiff(vars, names(data))
   if (length(extra))
     stop("every model variable must be a column of `data`; not found: ",

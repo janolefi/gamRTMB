@@ -4,18 +4,27 @@
 \alias{.model_data}
 \title{Assemble the model data}
 \usage{
-.model_data(response, par_formulas, data, weights, na.action)
+.model_data(
+  response,
+  par_formulas,
+  data,
+  weights,
+  na.action,
+  env = parent.frame()
+)
 }
 \arguments{
 \item{response}{The response expression (LHS of the outer formula).}
 
 \item{par_formulas}{One-sided formulas, one per distributional parameter.}
 
-\item{data}{A data frame.}
+\item{data}{A data frame, or \code{NULL} to look the variables up in \code{env}.}
 
 \item{weights}{Evaluated prior weights, or \code{NULL}.}
 
 \item{na.action}{Missing-data action, e.g. \code{\link[stats:na.fail]{stats::na.omit()}}.}
+
+\item{env}{Environment for the variables when \code{data} is \code{NULL}.}
 }
 \value{
 \code{list(data, y, weights, dropped)}.
@@ -28,8 +37,10 @@ returns the data with incomplete rows dropped, together with the response
 and prior weights aligned to it.
 }
 \details{
-Model variables must be columns of \code{data}. R would otherwise let them come
-from the calling environment, where dropping rows for missing values could
-silently misalign them against the response.
+With a \code{data} argument, model variables must be columns of it. R would
+otherwise let some of them come from the calling environment, where
+dropping rows for missing values could silently misalign them against the
+response. Without one, everything comes from \code{env} and is rectangled here,
+before any row is dropped, so the same guarantee holds.
 }
 \keyword{internal}

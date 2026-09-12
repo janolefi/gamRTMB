@@ -177,6 +177,13 @@
 #' density's own (`xi`, `omega`, `alpha` for a skew normal), not generic
 #' location/scale/shape labels.
 #'
+#' @section Data:
+#' `data` is optional. Without it the model variables are looked up where the
+#' formula was written, as in [stats::glm()] or [mgcv::gam()]; they are
+#' collected into a data frame first, so everything downstream — `na.action`,
+#' [predict()], the plots — sees the same rectangle either way. Variables
+#' found this way must all have the same length.
+#'
 #' @section Sparse penalties:
 #' A smooth whose penalty is a sparse precision matrix -- `bs = "mrf"` over an
 #' adjacency graph, a random walk, or any precision supplied through
@@ -217,8 +224,9 @@
 #'
 #' @param formula A two-sided formula whose right-hand side is a `list()` of
 #'   per-parameter formulas.
-#' @param data A data frame. Every model variable must be a column of it.
 #' @param family A `gamRTMB_family`, from [fam()]. See [families()].
+#' @param data A data frame holding every model variable, or `NULL` (the
+#'   default) to take them from the environment of `formula`.
 #' @param weights Optional prior weights, evaluated in `data`. As in
 #'   [stats::glm()], each observation's log-density contribution is multiplied
 #'   by its weight.
@@ -259,7 +267,7 @@
 #' fit
 #' edf(fit)
 #' @export
-gamRTMB <- function(formula, data, family = fam("norm"), weights = NULL,
+gamRTMB <- function(formula, family = fam("norm"), data = NULL, weights = NULL,
                     na.action = stats::na.omit, knots = NULL,
                     method = c("REML", "ML"),
                     engine = c("laplace", "efs"), sigma_frac = 0.05,
@@ -272,12 +280,18 @@ gamRTMB <- function(formula, data, family = fam("norm"), weights = NULL,
   if (!inherits(family, "gamRTMB_family"))
     stop("`family` must be a gamRTMB_family, e.g. fam(\"norm\") or ",
          "fam(\"gamma2\"); see families()")
-  if (missing(data) || !is.data.frame(data))
-    stop("`data` must be a data frame")
+  if (!is.null(data) && !is.data.frame(data))
+    stop("`data` must be a data frame, or NULL to use the formula's environment")
 
-  w <- eval(substitute(weights), data, parent.frame())
+  ## `parent.frame()` is taken here rather than passed along lazily: inside a
+  ## promise it would resolve against whatever frame forced it.
+  caller <- parent.frame()
+  fenv <- if (is.null(environment(formula))) caller else environment(formula)
+
+  w <- if (is.null(data)) eval(substitute(weights), caller)
+       else eval(substitute(weights), data, caller)
   pf <- .parse_formula(formula, family$parnames)
-  md <- .model_data(pf$response, pf$par_formulas, data, w, na.action)
+  md <- .model_data(pf$response, pf$par_formulas, data, w, na.action, fenv)
   data <- md$data; y <- md$y; w <- md$weights
   design <- .build_design(pf$par_formulas, data, family$parnames,
                           knots = knots, sparse = sparse)
