@@ -38,7 +38,7 @@ converge to a worse optimum more often, which is the pinned-to-null-space
 mode above.
 
 Since no single value serves, a start that leaves the objective non-finite
-is retried over \code{\link[=.sigma_frac_ladder]{.sigma_frac_ladder()}} rather than left to the user to
+is retried over \link{.sigma_frac_ladder} rather than left to the user to
 guess. See \code{dev/NOTES-sigma-frac.md} for the measurements, and
 \code{dev/bench-sigma-frac.R} to reproduce them.
 }

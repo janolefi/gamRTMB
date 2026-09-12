@@ -41,7 +41,7 @@ values, and on the harder families it often is not. That is handled in two
 steps, both of which are about failing cheaply rather than about finding a
 better start: \code{\link[=.probe_finite]{.probe_finite()}} asks the question with a short inner
 iteration cap, and a \code{FALSE} sends the caller to the next rung of
-\code{\link[=.sigma_frac_ladder]{.sigma_frac_ladder()}}. If every rung fails, the fit proceeds from the
+\link{.sigma_frac_ladder}. If every rung fails, the fit proceeds from the
 original starting values under the full cap, so the ladder can only add
 fits, never remove one.
 }

@@ -100,7 +100,7 @@
 #' mode above.
 #'
 #' Since no single value serves, a start that leaves the objective non-finite
-#' is retried over [.sigma_frac_ladder()] rather than left to the user to
+#' is retried over [.sigma_frac_ladder] rather than left to the user to
 #' guess. See `dev/NOTES-sigma-frac.md` for the measurements, and
 #' `dev/bench-sigma-frac.R` to reproduce them.
 #'
@@ -127,14 +127,25 @@
   pars
 }
 
-## Alternative variance-component starts, tried in this order when the first
-## marginal evaluation is not finite. They are not a refinement of one
-## another: over eight families and five seeds the number of fits reaching a
-## converged solution is not monotone in `frac` and no value dominates, so the
-## point of the ladder is coverage rather than a better default. Ordered by
-## that table, with 0.001 last because it converges most often and misses the
-## optimum most often. See .init_pars() for what `frac` means, and
-## dev/NOTES-sigma-frac.md for the measurements.
+#' Fallback variance-component starts
+#'
+#' Tried in this order when the first marginal evaluation is not finite. They
+#' are not a refinement of one another, and the ladder is not a search for a
+#' better default: over eight families and five seeds the number of fits
+#' reaching a converged solution is not monotone in `frac`, no value
+#' dominates, and the spread between families is far larger than the spread
+#' across `frac`. What the measurements support is that no single value
+#' serves, so the point of the ladder is coverage.
+#'
+#' Ordered by that table: the two that did best on count, then 0.001 last,
+#' because it converges most often and misses the optimum most often --
+#' a start that clamped leaves the smooth pinned near its null space.
+#'
+#' See [.init_pars()] for what `frac` means, `dev/NOTES-sigma-frac.md` for the
+#' measurements and `dev/bench-sigma-frac.R` to reproduce them.
+#'
+#' @format A numeric vector of `sigma_frac` values.
+#' @keywords internal
 .sigma_frac_ladder <- c(0.005, 0.2, 0.001)
 
 ## Inner iteration cap for the probe below. A well-posed inner solve reaches
@@ -375,7 +386,7 @@
 #'   linear-predictor scale. See [.init_pars()]. Raise it if a fit converges
 #'   to an over-smooth solution. If the objective is not finite here, a few
 #'   other values are tried automatically before giving up (see
-#'   [.sigma_frac_ladder()]) and the one used is reported; passing this
+#'   [.sigma_frac_ladder]) and the one used is reported; passing this
 #'   argument explicitly does not switch that off, but passing `start` does.
 #' @param sparse How to treat a smooth whose single penalty is already sparse
 #'   -- a Markov random field, a random walk, a supplied GMRF precision.
@@ -486,7 +497,7 @@ gamRTMB <- function(formula, family = fam("norm"), data = NULL, weights = NULL,
 #' steps, both of which are about failing cheaply rather than about finding a
 #' better start: [.probe_finite()] asks the question with a short inner
 #' iteration cap, and a `FALSE` sends the caller to the next rung of
-#' [.sigma_frac_ladder()]. If every rung fails, the fit proceeds from the
+#' [.sigma_frac_ladder]. If every rung fails, the fit proceeds from the
 #' original starting values under the full cap, so the ladder can only add
 #' fits, never remove one.
 #'

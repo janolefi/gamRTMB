@@ -60,7 +60,7 @@ values: each smooth starts contributing this fraction of its parameter's
 linear-predictor scale. See \code{\link[=.init_pars]{.init_pars()}}. Raise it if a fit converges
 to an over-smooth solution. If the objective is not finite here, a few
 other values are tried automatically before giving up (see
-\code{\link[=.sigma_frac_ladder]{.sigma_frac_ladder()}}) and the one used is reported; passing this
+\link{.sigma_frac_ladder}) and the one used is reported; passing this
 argument explicitly does not switch that off, but passing \code{start} does.}
 
 \item{sparse}{How to treat a smooth whose single penalty is already sparse
