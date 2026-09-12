@@ -32,7 +32,8 @@ gamRTMB(
 }
 \arguments{
 \item{formula}{A two-sided formula whose right-hand side is a \code{list()} of
-per-parameter formulas.}
+per-parameter formulas, or a plain right-hand side for the family's first
+parameter.}
 
 \item{family}{A \code{gamRTMB_family}, from \code{\link[=fam]{fam()}}. See \code{\link[=families]{families()}}.}
 
@@ -113,6 +114,11 @@ distributional parameter gets a one-sided formula:
 declares but the formula omits are given \code{~1}. Parameter names are the
 density's own (\code{xi}, \code{omega}, \code{alpha} for a skew normal), not generic
 location/scale/shape labels.
+
+A plain right-hand side is shorthand for modelling the family's \emph{first}
+parameter and leaving the rest constant, so \code{y ~ s(x)} means
+\code{y ~ list(mean = ~ s(x))} for \code{fam("norm")}. That is the ordinary gam
+formula, and it is what makes the one-parameter case read like one.
 }
 
 \section{Data}{
@@ -178,4 +184,7 @@ fit <- gamRTMB(y ~ list(mean = ~ s(x1, k = 8), sd = ~ s(x2, k = 8)),
                data = d)
 fit
 edf(fit)
+
+## a plain right-hand side models the family's first parameter
+gamRTMB(y ~ s(x1, k = 8), data = d)
 }

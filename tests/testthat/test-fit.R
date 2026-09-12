@@ -121,6 +121,20 @@ test_that("data is optional, and the variables then come from the formula", {
   expect_identical(gamRTMB(f2)$dropped, 1L)
 })
 
+test_that("a plain right-hand side fits the family's first parameter", {
+  d <- sim_ls(200)
+  short <- gamRTMB(y ~ s(x1, k = 8), data = d)
+  long  <- gamRTMB(y ~ list(mean = ~ s(x1, k = 8)), data = d)
+  expect_equal(short$objective, long$objective, tolerance = 1e-10)
+  expect_identical(short$design$parnames, long$design$parnames)
+
+  ## the first parameter is the family's, not a name of ours
+  d$cnt <- stats::rpois(nrow(d), exp(1 + sin(2 * pi * d$x1)))
+  pois <- gamRTMB(cnt ~ s(x1, k = 8), fam("pois"), d)
+  expect_identical(names(pois$par_formulas)[1L], "lambda")
+  expect_equal(pois$par_formulas$lambda, ~ s(x1, k = 8), ignore_attr = TRUE)
+})
+
 test_that("a non-finite gradient is diagnosed, not passed to the optimiser", {
   ## .flat_start must survive a gradient it cannot use
   expect_null(gamRTMB:::.flat_start(c(NA_real_, NaN), function(p) 0,

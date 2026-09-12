@@ -177,6 +177,11 @@
 #' density's own (`xi`, `omega`, `alpha` for a skew normal), not generic
 #' location/scale/shape labels.
 #'
+#' A plain right-hand side is shorthand for modelling the family's *first*
+#' parameter and leaving the rest constant, so `y ~ s(x)` means
+#' `y ~ list(mean = ~ s(x))` for `fam("norm")`. That is the ordinary gam
+#' formula, and it is what makes the one-parameter case read like one.
+#'
 #' @section Data:
 #' `data` is optional. Without it the model variables are looked up where the
 #' formula was written, as in [stats::glm()] or [mgcv::gam()]; they are
@@ -223,7 +228,8 @@
 #' including across distributional parameters.
 #'
 #' @param formula A two-sided formula whose right-hand side is a `list()` of
-#'   per-parameter formulas.
+#'   per-parameter formulas, or a plain right-hand side for the family's first
+#'   parameter.
 #' @param family A `gamRTMB_family`, from [fam()]. See [families()].
 #' @param data A data frame holding every model variable, or `NULL` (the
 #'   default) to take them from the environment of `formula`.
@@ -266,6 +272,9 @@
 #'                data = d)
 #' fit
 #' edf(fit)
+#'
+#' ## a plain right-hand side models the family's first parameter
+#' gamRTMB(y ~ s(x1, k = 8), data = d)
 #' @export
 gamRTMB <- function(formula, family = fam("norm"), data = NULL, weights = NULL,
                     na.action = stats::na.omit, knots = NULL,

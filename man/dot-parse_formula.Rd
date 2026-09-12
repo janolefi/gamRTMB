@@ -7,7 +7,8 @@
 .parse_formula(formula, parnames)
 }
 \arguments{
-\item{formula}{e.g. \code{y ~ list(mean = ~ s(x1) + s(x2), sd = ~ s(x1))}.}
+\item{formula}{e.g. \code{y ~ list(mean = ~ s(x1) + s(x2), sd = ~ s(x1))}, or
+\code{y ~ s(x1) + s(x2)} for the first parameter alone.}
 
 \item{parnames}{Character vector of the family's modelled parameters.}
 }
@@ -21,5 +22,12 @@ distributional parameter gets a one-sided formula from the \code{list()} on the
 right, in the style of \code{brms::bf()}. Any parameter the family declares but
 the user does not mention is given \code{~1}, which is why the family spec has
 to exist before formula processing.
+}
+\details{
+A right-hand side that is not a \code{list()} call is taken as the formula for
+the family's first parameter, so \code{y ~ s(x)} and
+\code{y ~ list(mean = ~ s(x))} are the same model for \code{fam("norm")}. The point
+is not brevity but that a model of one parameter should look like an
+ordinary gam formula, which is what it is.
 }
 \keyword{internal}

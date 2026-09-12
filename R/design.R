@@ -9,7 +9,14 @@
 #' the user does not mention is given `~1`, which is why the family spec has
 #' to exist before formula processing.
 #'
-#' @param formula e.g. `y ~ list(mean = ~ s(x1) + s(x2), sd = ~ s(x1))`.
+#' A right-hand side that is not a `list()` call is taken as the formula for
+#' the family's first parameter, so `y ~ s(x)` and
+#' `y ~ list(mean = ~ s(x))` are the same model for `fam("norm")`. The point
+#' is not brevity but that a model of one parameter should look like an
+#' ordinary gam formula, which is what it is.
+#'
+#' @param formula e.g. `y ~ list(mean = ~ s(x1) + s(x2), sd = ~ s(x1))`, or
+#'   `y ~ s(x1) + s(x2)` for the first parameter alone.
 #' @param parnames Character vector of the family's modelled parameters.
 #' @return A list with the response expression and one formula per parameter,
 #'   ordered as `parnames`.
@@ -18,9 +25,12 @@
   if (!inherits(formula, "formula") || length(formula) != 3L)
     stop("`formula` must be two-sided, e.g. y ~ list(mean = ~ s(x))")
   rhs <- formula[[3L]]
+  env <- environment(formula)
   if (!(is.call(rhs) && identical(rhs[[1L]], as.name("list"))))
-    stop("the right-hand side must be a list() of per-parameter formulas, ",
-         "e.g. y ~ list(mean = ~ s(x), sd = ~ 1)")
+    return(list(response = formula[[2L]],
+                par_formulas = .fill_formulas(
+                  stats::setNames(list(eval(call("~", rhs), env)), parnames[1L]),
+                  parnames, env)))
   args <- as.list(rhs)[-1L]
   if (length(args) && (is.null(names(args)) || any(!nzchar(names(args)))))
     stop("every element of the list() must be named after a distributional parameter")
@@ -28,16 +38,30 @@
   if (length(unknown))
     stop("unknown distributional parameter(s) ", paste(unknown, collapse = ", "),
          "; this family models ", paste(parnames, collapse = ", "))
-  env <- environment(formula)
   out <- lapply(args, function(a) {
     f <- eval(a, env)
     if (!inherits(f, "formula")) stop("each list() element must be a formula")
-    if (length(f) == 3L) stop("per-parameter formulas must be one-sided")
-    environment(f) <- env
     f
   })
+  list(response = formula[[2L]],
+       par_formulas = .fill_formulas(out, parnames, env))
+}
+
+#' Complete and order a set of per-parameter formulas
+#'
+#' Every parameter the family declares gets a one-sided formula in the
+#' family's own order, `~1` where the user gave none, all sharing the outer
+#' formula's environment so that a variable resolves from where the model was
+#' written rather than from where each piece happened to be built.
+#'
+#' @keywords internal
+.fill_formulas <- function(out, parnames, env) {
+  for (p in names(out)) {
+    if (length(out[[p]]) == 3L) stop("per-parameter formulas must be one-sided")
+    environment(out[[p]]) <- env
+  }
   for (p in setdiff(parnames, names(out))) out[[p]] <- stats::as.formula("~1", env)
-  list(response = formula[[2L]], par_formulas = out[parnames])
+  out[parnames]
 }
 
 #' Assemble the model data
