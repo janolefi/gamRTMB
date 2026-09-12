@@ -221,8 +221,13 @@ the tails, with <code>nu = 2</code> being exactly Gaussian:</p>
 <span><span class="co">#&gt;      nu </span></span>
 <span><span class="co">#&gt; 41.1903</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>gaussian <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/AIC.html" class="external-link">AIC</a></span><span class="op">(</span><span class="va">fit</span><span class="op">)</span>, power_exponential <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/AIC.html" class="external-link">AIC</a></span><span class="op">(</span><span class="va">fit_pe</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Warning: the effective degrees of freedom are not defined at these values: 28</span></span>
+<span><span class="co">#&gt; of 33 coefficients fall outside [0, 1], so the data Hessian is not positive</span></span>
+<span><span class="co">#&gt; semi-definite here and H^-1 H_data is not a projection. They are reported as</span></span>
+<span><span class="co">#&gt; NA. This fit has not converged -- check `max_grad`; see ?gamRTMB for the</span></span>
+<span><span class="co">#&gt; starting-value and basis options.</span></span>
 <span><span class="co">#&gt;          gaussian power_exponential </span></span>
-<span><span class="co">#&gt;          1110.299         -8837.617</span></span></code></pre></div>
+<span><span class="co">#&gt;          1110.299                NA</span></span></code></pre></div>
 <p><code>nu</code> comes out near 3.7 rather than 2, which points to
 slightly <em>lighter</em> tails than Gaussian, but AIC does not prefer
 the richer model. So there is no case for changing the shape once the

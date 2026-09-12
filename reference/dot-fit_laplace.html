@@ -54,10 +54,25 @@ criterion, then optimises the variance components with <code>nlminb</code>.</p>
 <span>  <span class="va">joint_precision</span>,</span>
 <span>  <span class="va">silent</span>,</span>
 <span>  <span class="va">control</span>,</span>
-<span>  <span class="va">family</span></span>
+<span>  <span class="va">family</span>,</span>
+<span>  inner_control <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span>,</span>
+<span>  repars <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
+    <div class="section level2">
+    <h2 id="arguments">Arguments<a class="anchor" aria-label="anchor" href="#arguments"></a></h2>
+
+
+<dl><dt id="arg-inner-control">inner_control<a class="anchor" aria-label="anchor" href="#arg-inner-control"></a></dt>
+<dd><p>Passed to <code><a href="https://rdrr.io/pkg/RTMB/man/TMB-interface.html" class="external-link">RTMB::MakeADFun()</a></code>'s <code>inner.control</code>.</p></dd>
+
+
+<dt id="arg-repars">repars<a class="anchor" aria-label="anchor" href="#arg-repars"></a></dt>
+<dd><p>Function of a <code>sigma_frac</code> returning a fresh starting
+parameter list, used to walk the ladder. <code>NULL</code> disables the retries.</p></dd>
+
+</dl></div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
     <p>Smoothing parameters tied by an <code>id</code> are collapsed through
@@ -65,6 +80,19 @@ criterion, then optimises the variance components with <code>nlminb</code>.</p>
 estimated value. An <code>NA</code> level there would instead fix an entry at its
 starting value, which is how a user-specified smoothing parameter would be
 implemented.</p>
+    </div>
+    <div class="section level2">
+    <h2 id="getting-started-at-all">Getting started at all<a class="anchor" aria-label="anchor" href="#getting-started-at-all"></a></h2>
+
+
+<p>Before any of that, the marginal objective has to be finite at the starting
+values, and on the harder families it often is not. That is handled in two
+steps, both of which are about failing cheaply rather than about finding a
+better start: <code><a href="dot-probe_finite.html">.probe_finite()</a></code> asks the question with a short inner
+iteration cap, and a <code>FALSE</code> sends the caller to the next rung of
+<code>.sigma_frac_ladder()</code>. If every rung fails, the fit proceeds from the
+original starting values under the full cap, so the ladder can only add
+fits, never remove one.</p>
     </div>
 
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

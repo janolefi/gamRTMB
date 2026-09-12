@@ -46,6 +46,28 @@ Checked against
 [`mgcv::gaulss()`](https://rdrr.io/pkg/mgcv/man/gaulss.html), which
 agrees to three decimals on both untied and `id`-tied models.
 
+## When the EDF do not exist
+
+All of that assumes \\H\_{data}\\ is positive semi-definite, which is
+what makes \\F = H^{-1} H\_{data}\\ a projection and puts every
+\\edf_j\\ in \\\[0, 1\]\\. At a point the optimiser never converged to
+it need not be, and the solve still returns numbers: a four-parameter
+Box-Cox fit on `film90` gives EDF near \\-6000\\ for a rank-9 basis.
+
+Note that it is \\H\_{data}\\ and not \\H\\ that has to be checked. The
+penalty can and does rescue the sum: on that same fit \\H\\ is positive
+definite while \\H\_{data} = H - S\\ has two negative eigenvalues, so a
+test on \\H\\ passes and the EDF are still nonsense. Rather than
+factorise a second matrix, the \\edf_j\\ are checked against the \\\[0,
+1\]\\ they are guaranteed to lie in – the same statement, and already
+computed.
+
+A negative EDF is not a small inaccuracy to report with a caveat; it
+means the quantity does not exist at this point. So the column is `NA`
+instead, with a warning pointing at `max_grad`. See
+[`.inner_indefinite()`](https://janolefi.github.io/gamRTMB/reference/dot-inner_indefinite.md)
+for how a fit gets into that state.
+
 ## Examples
 
 ``` r

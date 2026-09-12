@@ -194,8 +194,13 @@ c(nu = exp(coef(fit_pe)$beta[["nu:(Intercept)"]]))
 #>      nu 
 #> 41.1903
 c(gaussian = AIC(fit), power_exponential = AIC(fit_pe))
+#> Warning: the effective degrees of freedom are not defined at these values: 28
+#> of 33 coefficients fall outside [0, 1], so the data Hessian is not positive
+#> semi-definite here and H^-1 H_data is not a projection. They are reported as
+#> NA. This fit has not converged -- check `max_grad`; see ?gamRTMB for the
+#> starting-value and basis options.
 #>          gaussian power_exponential 
-#>          1110.299         -8837.617
+#>          1110.299                NA
 ```
 
 `nu` comes out near 3.7 rather than 2, which points to slightly

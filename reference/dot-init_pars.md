@@ -23,11 +23,21 @@ an `id` get a common value, since only one of them survives the mapping.
 the inner Newton solve push a parameter out of the family's support,
 which shows up as a non-finite marginal objective; too clamped a start
 leaves the smooth pinned to its null space, where the REML gradient in
-log-sigma is nearly zero and the outer optimiser stalls. Over six
-simulated designs the two failure modes bracket a wide, flat optimum: on
-well-behaved families (Gaussian, gamma, beta, t) any `frac` between 0.5
-and 0.005 reaches the same optimum to two decimals, while on
-four-parameter families it matters, with 0.05 converging on 172/180 fits
-against 168/180 at 0.2 and collapsing below 0.02. Hence the default. The
-cost of the smaller start is 20-40%% more outer iterations on the models
-that never had trouble.
+log-sigma is nearly zero and the outer optimiser stalls.
+
+On well-behaved families the two failure modes bracket a wide, flat
+optimum, and `frac` may as well not exist: over `norm`, `gamma2` and
+`beta2` every value from 0.2 down to 0.001 converges on all fifteen fits
+and agrees to seven significant figures. On four-parameter families it
+matters, but **not monotonically, and no value dominates** – 0.01 does
+worst, with 0.2 and 0.001 on either side of it doing better, and the
+spread between families is far larger than the spread across `frac`. So
+0.05 is a default rather than an optimum, kept because the evidence for
+moving it is four fits out of twenty-five. The small values additionally
+converge to a worse optimum more often, which is the
+pinned-to-null-space mode above.
+
+Since no single value serves, a start that leaves the objective
+non-finite is retried over `.sigma_frac_ladder()` rather than left to
+the user to guess. See `dev/NOTES-sigma-frac.md` for the measurements,
+and `dev/bench-sigma-frac.R` to reproduce them.

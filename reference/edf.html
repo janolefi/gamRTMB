@@ -111,6 +111,27 @@ coefficients is attached as attribute <code>"edf.total"</code>.</p>
     <p>Checked against <code><a href="https://rdrr.io/pkg/mgcv/man/gaulss.html" class="external-link">mgcv::gaulss()</a></code>, which agrees to three decimals on both
 untied and <code>id</code>-tied models.</p>
     </div>
+    <div class="section level2">
+    <h2 id="when-the-edf-do-not-exist">When the EDF do not exist<a class="anchor" aria-label="anchor" href="#when-the-edf-do-not-exist"></a></h2>
+
+
+<p>All of that assumes \(H_{data}\) is positive semi-definite, which is what
+makes \(F = H^{-1} H_{data}\) a projection and puts every \(edf_j\) in
+\([0, 1]\). At a point the optimiser never converged to it need not be,
+and the solve still returns numbers: a four-parameter Box-Cox fit on
+<code>film90</code> gives EDF near \(-6000\) for a rank-9 basis.</p>
+<p>Note that it is \(H_{data}\) and not \(H\) that has to be checked.
+The penalty can and does rescue the sum: on that same fit \(H\) is
+positive definite while \(H_{data} = H - S\) has two negative
+eigenvalues, so a test on \(H\) passes and the EDF are still nonsense.
+Rather than factorise a second matrix, the \(edf_j\) are checked against
+the \([0, 1]\) they are guaranteed to lie in – the same statement, and
+already computed.</p>
+<p>A negative EDF is not a small inaccuracy to report with a caveat; it means
+the quantity does not exist at this point. So the column is <code>NA</code> instead,
+with a warning pointing at <code>max_grad</code>. See <code><a href="dot-inner_indefinite.html">.inner_indefinite()</a></code> for how a
+fit gets into that state.</p>
+    </div>
 
     <div class="section level2">
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>

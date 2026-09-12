@@ -62,13 +62,22 @@ mapping.</p>
 inner Newton solve push a parameter out of the family's support, which
 shows up as a non-finite marginal objective; too clamped a start leaves the
 smooth pinned to its null space, where the REML gradient in log-sigma is
-nearly zero and the outer optimiser stalls. Over six simulated designs the
-two failure modes bracket a wide, flat optimum: on well-behaved families
-(Gaussian, gamma, beta, t) any <code>frac</code> between 0.5 and 0.005 reaches the
-same optimum to two decimals, while on four-parameter families it matters,
-with 0.05 converging on 172/180 fits against 168/180 at 0.2 and collapsing
-below 0.02. Hence the default. The cost of the smaller start is 20-40%%
-more outer iterations on the models that never had trouble.</p>
+nearly zero and the outer optimiser stalls.</p>
+<p>On well-behaved families the two failure modes bracket a wide, flat
+optimum, and <code>frac</code> may as well not exist: over <code>norm</code>, <code>gamma2</code> and
+<code>beta2</code> every value from 0.2 down to 0.001 converges on all fifteen fits
+and agrees to seven significant figures. On four-parameter families it
+matters, but <strong>not monotonically, and no value dominates</strong> – 0.01 does
+worst, with 0.2 and 0.001 on either side of it doing better, and the
+spread between families is far larger than the spread across <code>frac</code>. So
+0.05 is a default rather than an optimum, kept because the evidence for
+moving it is four fits out of twenty-five. The small values additionally
+converge to a worse optimum more often, which is the pinned-to-null-space
+mode above.</p>
+<p>Since no single value serves, a start that leaves the objective non-finite
+is retried over <code>.sigma_frac_ladder()</code> rather than left to the user to
+guess. See <code>dev/NOTES-sigma-frac.md</code> for the measurements, and
+<code>dev/bench-sigma-frac.R</code> to reproduce them.</p>
     </div>
 
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

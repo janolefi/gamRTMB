@@ -66,7 +66,8 @@ differentiation and Laplace approximation, over the log-densities in
 <span>  joint_precision <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  start <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  silent <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>  control <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span></span>
+<span>  control <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span>,</span>
+<span>  inner_control <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="co"># S3 method for class 'gamRTMB'</span></span>
@@ -126,8 +127,10 @@ many in the fit's summary.</p></dd>
 <dd><p>Tuning constant for the variance-component starting
 values: each smooth starts contributing this fraction of its parameter's
 linear-predictor scale. See <code><a href="dot-init_pars.html">.init_pars()</a></code>. Raise it if a fit converges
-to an over-smooth solution, lower it if the objective is not finite at
-the starting values.</p></dd>
+to an over-smooth solution. If the objective is not finite here, a few
+other values are tried automatically before giving up (see
+<code>.sigma_frac_ladder()</code>) and the one used is reported; passing this
+argument explicitly does not switch that off, but passing <code>start</code> does.</p></dd>
 
 
 <dt id="arg-sparse">sparse<a class="anchor" aria-label="anchor" href="#arg-sparse"></a></dt>
@@ -159,6 +162,14 @@ parameter list (<code>beta</code>, <code>b</code>, <code>log_sigma</code>).</p><
 
 <dt id="arg-control">control<a class="anchor" aria-label="anchor" href="#arg-control"></a></dt>
 <dd><p>Passed to <code><a href="https://rdrr.io/r/stats/nlminb.html" class="external-link">stats::nlminb()</a></code>.</p></dd>
+
+
+<dt id="arg-inner-control">inner_control<a class="anchor" aria-label="anchor" href="#arg-inner-control"></a></dt>
+<dd><p>Passed to <code><a href="https://rdrr.io/pkg/RTMB/man/TMB-interface.html" class="external-link">RTMB::MakeADFun()</a></code>'s <code>inner.control</code>, which
+governs the inner Newton solve over the coefficients rather than the
+outer optimisation of the smoothing parameters. <code>list(maxit = ...)</code> is
+the entry worth reaching for; see <code>dev/NOTES-inner-method.md</code> for why
+<code>inner.method</code> is not exposed.</p></dd>
 
 
 <dt id="arg-object">object<a class="anchor" aria-label="anchor" href="#arg-object"></a></dt>

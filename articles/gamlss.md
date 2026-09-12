@@ -94,8 +94,8 @@ data.frame(
   AIC     = round(c(AIC(m2), AIC(f2)), 1)
 )
 #>       fit seconds  edf     AIC
-#> 1  gamlss    0.37 9.11 28061.6
-#> 2 gamRTMB    0.47 8.74 28062.9
+#> 1  gamlss    0.36 9.11 28061.6
+#> 2 gamRTMB    0.46 8.74 28062.9
 
 p2 <- predict(f2, type = "response")
 c(mean = cor(fitted(m2, "mu"), p2$mean),
@@ -133,8 +133,8 @@ data.frame(
   AIC     = round(c(AIC(m3), AIC(f3)), 1)
 )
 #>       fit seconds   edf    AIC
-#> 1  gamlss    0.47 11.76 4794.5
-#> 2 gamRTMB    1.54 15.01 4803.5
+#> 1  gamlss    0.40 11.76 4794.5
+#> 2 gamRTMB    1.42 15.01 4803.5
 ```
 
 Here the two part company a little. The fitted curves still agree —
@@ -292,9 +292,9 @@ res <- t(vapply(sizes, function(n) {
 }, c(gamlss = 0, gamRTMB = 0)))
 data.frame(n = sizes, round(res, 2))
 #>      n gamlss gamRTMB
-#> 1  500   0.46    0.42
-#> 2 2000   0.63    1.16
-#> 3 7294   3.52    3.14
+#> 1  500   0.65    0.43
+#> 2 2000   0.39    1.32
+#> 3 7294   3.36    3.22
 ```
 
 Neither dominates. Both stay within about a factor of two of each other

@@ -26,6 +26,8 @@
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-gmrf_block.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-iid_block.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-init_pars.html</loc></url>
+<url><loc>https://janolefi.github.io/gamRTMB/reference/dot-inner_indefinite.html</loc></url>
+<url><loc>https://janolefi.github.io/gamRTMB/reference/dot-is_pd.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-joint_cov.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-lattice_families.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-link_dict.html</loc></url>
@@ -45,8 +47,10 @@
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-plot_quantile.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-plot_res.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-plot_spec.html</loc></url>
+<url><loc>https://janolefi.github.io/gamRTMB/reference/dot-probe_finite.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-qform_se.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-quantile_se.html</loc></url>
+<url><loc>https://janolefi.github.io/gamRTMB/reference/dot-random_labels.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-reconstruct_map.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-resolve_fixed.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-resolve_xvar.html</loc></url>

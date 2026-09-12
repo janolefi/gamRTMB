@@ -22,7 +22,8 @@ gamRTMB(
   joint_precision = TRUE,
   start = NULL,
   silent = TRUE,
-  control = list()
+  control = list(),
+  inner_control = list()
 )
 
 # S3 method for class 'gamRTMB'
@@ -85,8 +86,11 @@ fitted(object, ...)
   smooth starts contributing this fraction of its parameter's
   linear-predictor scale. See
   [`.init_pars()`](https://janolefi.github.io/gamRTMB/reference/dot-init_pars.md).
-  Raise it if a fit converges to an over-smooth solution, lower it if
-  the objective is not finite at the starting values.
+  Raise it if a fit converges to an over-smooth solution. If the
+  objective is not finite here, a few other values are tried
+  automatically before giving up (see `.sigma_frac_ladder()`) and the
+  one used is reported; passing this argument explicitly does not switch
+  that off, but passing `start` does.
 
 - sparse:
 
@@ -124,6 +128,15 @@ fitted(object, ...)
 - control:
 
   Passed to [`stats::nlminb()`](https://rdrr.io/r/stats/nlminb.html).
+
+- inner_control:
+
+  Passed to
+  [`RTMB::MakeADFun()`](https://rdrr.io/pkg/RTMB/man/TMB-interface.html)'s
+  `inner.control`, which governs the inner Newton solve over the
+  coefficients rather than the outer optimisation of the smoothing
+  parameters. `list(maxit = ...)` is the entry worth reaching for; see
+  `dev/NOTES-inner-method.md` for why `inner.method` is not exposed.
 
 - object:
 
