@@ -41,7 +41,7 @@
 #' Plot a gamRTMB fit
 #'
 #' @section Term plots (`type = "terms"`):
-#' One panel per smooth, showing its contribution to that distributional
+#' One panel per term, showing its contribution to that distributional
 #' parameter's linear predictor — the scale on which terms are additive — with
 #' a **pointwise** \eqn{\pm 2} standard error band. The band comes from
 #' [vcov.gamRTMB()]'s joint covariance, so it includes the uncertainty in the
@@ -49,9 +49,22 @@
 #' with `joint_precision = TRUE`, which is the default. Panels are titled
 #' `parameter: term`, since terms belong to different parameters.
 #'
-#' Only one-dimensional smooths of a numeric covariate are drawn. Tensor
-#' products, random effects (`bs = "re"`) and factor-smooth interactions
-#' (`bs = "fs"`) are reported and skipped rather than drawn misleadingly.
+#' Parametric terms get panels too, as in `gamlss::term.plot` and unlike
+#' [mgcv::plot.gam()], whose `all.terms` defaults to `FALSE`. A term is a
+#' contribution to a parameter's predictor whether or not it is penalized, and
+#' what a distributional model is for is usually how those contributions
+#' differ between parameters; a parameter carrying no smooth at all should
+#' still show what does act on it. Set `all.terms = FALSE` for the mgcv
+#' behaviour. A parametric term's columns are centred at their means over the
+#' fitting data, as in [stats::predict.lm()] with `type = "terms"`, so a panel
+#' shows the term's variation rather than the level the intercept already
+#' carries. A categorical term is drawn as an estimate and interval per level
+#' rather than as a curve.
+#'
+#' Only one-dimensional terms in a single variable are drawn: on the smooth
+#' side that excludes tensor products, random effects (`bs = "re"`) and
+#' factor-smooth interactions (`bs = "fs"`), and on the parametric side
+#' interactions. They are reported and skipped rather than drawn misleadingly.
 #'
 #' @section Quantile plots (`type = "quantile"`):
 #' Fitted quantiles of the response against one covariate, over the observed
@@ -101,9 +114,11 @@
 #'
 #' @param x A `gamRTMB` fit.
 #' @param type `"terms"` (default), `"qq"` or `"worm"`.
-#' @param select Which smooths to draw: an integer index, or a pattern matched
+#' @param select Which terms to draw: an integer index, or a pattern matched
 #'   against the `parameter: term` labels (e.g. `"sd"` or `"s(x1)"`). Defaults
 #'   to all of them.
+#' @param all.terms Give parametric terms their own panels in a term plot,
+#'   alongside the smooths. `TRUE` by default; see the section above.
 #' @param se Draw the interval band.
 #' @param rug Add a rug of the observed covariate values.
 #' @param band.col Fill for the interval band. A solid light grey by default,
@@ -137,10 +152,11 @@ plot.gamRTMB <- function(x, type = c("terms", "qq", "worm", "quantile",
                          select = NULL, prob = seq(0.05, 0.95, by = 0.05),
                          xvar = NULL, at = NULL, se = TRUE, rug = TRUE,
                          band.col = "grey85", nsim = 1, ask = FALSE,
-                         n = 200, ...) {
+                         n = 200, all.terms = TRUE, ...) {
   type <- match.arg(type)
   switch(type,
-    terms    = .plot_terms(x, select, se, rug, band.col, ask, n, ...),
+    terms    = .plot_terms(x, select, se, rug, band.col, ask, n, all.terms,
+                           ...),
     qq       = .plot_res(x, nsim, FALSE, se, band.col, ...),
     worm     = .plot_res(x, nsim, TRUE,  se, band.col, ...),
     quantile = .plot_quantile(x, xvar, prob, se, band.col, n, ...),
@@ -215,12 +231,8 @@ plot.gamRTMB <- function(x, type = c("terms", "qq", "worm", "quantile",
 #' @keywords internal
 .newdata_along <- function(fit, xvar, values) {
   nd <- fit$data[rep(1L, length(values)), , drop = FALSE]
-  for (v in setdiff(names(nd), xvar)) {
-    cl <- fit$data[[v]]
-    nd[[v]] <- if (is.factor(cl))
-      factor(rep(names(which.max(table(cl))), length(values)), levels = levels(cl))
-      else rep(stats::median(cl), length(values))
-  }
+  for (v in setdiff(names(nd), xvar))
+    nd[[v]] <- rep(.typical(fit$data[[v]]), length(values))
   nd[[xvar]] <- values
   nd
 }
@@ -370,22 +382,111 @@ plot.gamRTMB <- function(x, type = c("terms", "qq", "worm", "quantile",
   invisible(out)
 }
 
+#' A typical value of a covariate
+#'
+#' The median of a numeric one and the modal level of a categorical one, for
+#' holding the rest of a term plot's covariates still.
+#'
 #' @keywords internal
-.plot_terms <- function(x, select, se, rug, band.col, ask, ngrid, ...) {
+.typical <- function(z) {
+  if (is.numeric(z)) return(stats::median(z, na.rm = TRUE))
+  u <- names(which.max(table(z)))
+  if (is.factor(z)) factor(u, levels = levels(z))
+  else if (is.logical(z)) as.logical(u) else u
+}
+
+#' The values a term plot's x-axis runs over
+#'
+#' A grid across the observed range of a numeric covariate, and every observed
+#' level of a categorical one.
+#'
+#' @keywords internal
+.term_grid <- function(z, ngrid) {
+  if (is.numeric(z)) seq(min(z), max(z), length.out = ngrid)
+  else if (is.factor(z)) factor(levels(z), levels = levels(z))
+  else sort(unique(z))
+}
+
+#' The drawable first-order parametric terms of one parameter
+#'
+#' Everything a `termplot` would draw: a term of order one in a single
+#' variable, so that `poly(x, 2)` and `log(x)` count but `x:z` does not. The
+#' intercept is not a term and is skipped; it is not a contribution to the
+#' predictor that varies with anything.
+#'
+#' @return A list of `list(k, var, label)`, `k` indexing the term within
+#'   `terms(...)`, with `var = NULL` for a term that cannot be drawn.
+#' @keywords internal
+.para_terms <- function(part) {
+  tt <- part$terms
+  labs <- attr(tt, "term.labels")
+  ord <- attr(tt, "order")
+  asg <- attr(part$Xpara, "assign")
+  lapply(seq_along(labs), function(k) {
+    v <- all.vars(stats::reformulate(labs[k])[[2L]])
+    list(k = k, label = labs[k],
+         var = if (ord[k] == 1L && length(v) == 1L && any(asg == k)) v)
+  })
+}
+
+#' One parametric term's contribution, as a linear form in the coefficients
+#'
+#' The same object a smooth panel draws, built the same way: a design for the
+#' term alone, evaluated along its own covariate with the others at a typical
+#' value, times the coefficients it multiplies. Its columns are centred at
+#' their means over the fitting data, as [stats::predict.lm()] does for
+#' `type = "terms"`, which fixes the free constant the intercept would
+#' otherwise absorb and leaves a form whose standard errors are those of a
+#' contrast rather than of an arbitrary level.
+#'
+#' @param fit A `gamRTMB` fit.
+#' @param p,k Distributional parameter and parametric term index.
+#' @param values The covariate values to evaluate at.
+#' @return `list(Z, coef, ib)`, with `ib` indexing `beta`.
+#' @keywords internal
+.para_part <- function(fit, p, k, v, values) {
+  P <- fit$design$parts[[p]]
+  tt <- stats::delete.response(P$terms)
+  nd <- lapply(all.vars(tt), function(u)
+    if (identical(u, v)) values else rep(.typical(fit$data[[u]]), length(values)))
+  names(nd) <- all.vars(tt)
+  mf <- stats::model.frame(tt, as.data.frame(nd, stringsAsFactors = FALSE),
+                           xlev = P$xlev)
+  X <- stats::model.matrix(tt, mf, contrasts.arg = attr(P$Xpara, "contrasts"))
+  cols <- which(attr(P$Xpara, "assign") == k)
+  Z <- X[, cols, drop = FALSE]
+  Z <- sweep(Z, 2L, colMeans(P$Xpara[, cols, drop = FALSE]))
+  ib <- fit$design$beta_idx[[p]][cols]
+  list(Z = Z, coef = fit$coefficients$beta[ib], ib = ib)
+}
+
+#' @keywords internal
+.plot_terms <- function(x, select, se, rug, band.col, ask, ngrid, all.terms,
+                        ...) {
   D <- x$design
   tl <- list()
-  for (p in D$parnames) for (j in seq_along(D$parts[[p]]$smooths)) {
-    s <- D$parts[[p]]$smooths[[j]]
-    tl[[length(tl) + 1L]] <- list(par = p, j = j, s = s,
-                                  label = paste0(p, ": ", s$label))
+  add <- function(...) tl[[length(tl) + 1L]] <<- list(...)
+  for (p in D$parnames) {
+    if (all.terms) for (t in .para_terms(D$parts[[p]]))
+      add(par = p, kind = "para", k = t$k, var = t$var,
+          label = paste0(p, ": ", t$label), ylab = t$label)
+    for (j in seq_along(D$parts[[p]]$smooths)) {
+      s <- D$parts[[p]]$smooths[[j]]
+      add(par = p, kind = "smooth", j = j, s = s, var = s$plot1d$var,
+          label = paste0(p, ": ", s$label), ylab = s$label)
+    }
   }
-  if (!length(tl)) stop("the model has no smooth terms to plot")
+  if (!length(tl))
+    stop(if (all.terms)
+      "the model has no terms to plot: every distributional parameter is an intercept."
+    else
+      "the model has no smooth terms to plot; all.terms = TRUE would draw its parametric ones.")
   labs <- function(z) vapply(z, `[[`, "", "label")
 
   if (!is.null(select)) {
     keep <- if (is.numeric(select)) {
       if (any(select < 1 | select > length(tl)))
-        stop("`select` must index the ", length(tl), " smooth terms")
+        stop("`select` must index the ", length(tl), " terms")
       as.integer(select)
     } else grep(select, labs(tl), fixed = FALSE)
     if (!length(keep))
@@ -393,12 +494,12 @@ plot.gamRTMB <- function(x, type = c("terms", "qq", "worm", "quantile",
     tl <- tl[keep]
   }
 
-  drawable <- !vapply(tl, function(t) is.null(t$s$plot1d), TRUE)
+  drawable <- !vapply(tl, function(t) is.null(t$var), TRUE)
   if (any(!drawable))
-    message("not drawable as a single curve, skipped: ",
+    message("not drawable as a single panel, skipped: ",
             paste(labs(tl[!drawable]), collapse = ", "))
   tl <- tl[drawable]
-  if (!length(tl)) stop("no one-dimensional smooth terms left to plot")
+  if (!length(tl)) stop("no one-dimensional terms left to plot")
 
   Vj <- if (se) tryCatch(.joint_cov(x), error = function(e) NULL) else NULL
   if (se && is.null(Vj))
@@ -407,17 +508,23 @@ plot.gamRTMB <- function(x, type = c("terms", "qq", "worm", "quantile",
 
   ## build every curve first, so a failure cannot leave a half-drawn page
   curves <- lapply(tl, function(t) {
-    ps <- t$s$plot1d
-    xv <- x$data[[ps$var]]
-    xg <- seq(min(xv), max(xv), length.out = ngrid)
-    nd <- stats::setNames(list(xg), ps$var)
-    if (!is.null(ps$by)) nd[[ps$by]] <- rep(ps$by_val, ngrid)
-    Xs <- mgcv::PredictMat(t$s$sm, as.data.frame(nd, stringsAsFactors = FALSE))
-    sp <- .smooth_part(x, t$par, t$j, Xs)
-    sef <- if (is.null(Vj)) rep(NA_real_, ngrid) else {
-      ii <- c(Vj$ir[sp$b], Vj$ib[sp$f])
-      .qform_se(sp$Z, Vj$V[ii, ii, drop = FALSE])
+    xv <- x$data[[t$var]]
+    xg <- if (identical(t$kind, "smooth")) .term_grid(xv, ngrid)
+          else .term_grid(xv, min(ngrid, 100L))
+    sp <- if (identical(t$kind, "para")) {
+      q <- .para_part(x, t$par, t$k, t$var, xg)
+      list(Z = q$Z, coef = q$coef, ii = Vj$ib[q$ib])
+    } else {
+      nd <- stats::setNames(list(xg), t$var)
+      ps <- t$s$plot1d
+      if (!is.null(ps$by)) nd[[ps$by]] <- rep(ps$by_val, length(xg))
+      Xs <- mgcv::PredictMat(t$s$sm,
+                             as.data.frame(nd, stringsAsFactors = FALSE))
+      q <- .smooth_part(x, t$par, t$j, Xs)
+      list(Z = q$Z, coef = q$coef, ii = c(Vj$ir[q$b], Vj$ib[q$f]))
     }
+    sef <- if (is.null(Vj)) rep(NA_real_, length(xg))
+           else .qform_se(sp$Z, Vj$V[sp$ii, sp$ii, drop = FALSE])
     data.frame(x = xg, fit = as.vector(sp$Z %*% sp$coef), se = sef)
   })
   names(curves) <- labs(tl)
@@ -440,16 +547,35 @@ plot.gamRTMB <- function(x, type = c("terms", "qq", "worm", "quantile",
           else grDevices::adjustcolor(col, alpha.f = 0.2)
 
   for (i in seq_along(tl)) {
-    cv <- curves[[i]]; ps <- tl[[i]]$s$plot1d
+    cv <- curves[[i]]; t <- tl[[i]]
     hi <- cv$fit + 2 * cv$se; lo <- cv$fit - 2 * cv$se
     yl <- if (all(is.na(cv$se))) range(cv$fit) else range(c(lo, hi), finite = TRUE)
-    .gcall(graphics::plot,
-           list(x = cv$x, y = cv$fit, type = "n", bty = "n", ylim = yl,
-                xlab = ps$var, ylab = tl[[i]]$s$label, main = names(curves)[i]),
-           dots)
-    if (!all(is.na(cv$se))) .band(cv$x, lo, hi, fill)
-    graphics::lines(cv$x, cv$fit, col = col, lwd = lwd)
-    if (rug) graphics::rug(x$data[[ps$var]], col = grDevices::adjustcolor(col, 0.4))
+    ## a categorical term is a handful of levels, not a curve: draw the
+    ## estimate and its interval at each level rather than joining them, which
+    ## would imply an ordering the levels need not have
+    if (is.numeric(cv$x)) {
+      .gcall(graphics::plot,
+             list(x = cv$x, y = cv$fit, type = "n", bty = "n", ylim = yl,
+                  xlab = t$var, ylab = t$ylab, main = names(curves)[i]), dots)
+      if (!all(is.na(cv$se))) .band(cv$x, lo, hi, fill)
+      graphics::lines(cv$x, cv$fit, col = col, lwd = lwd)
+      if (rug) graphics::rug(x$data[[t$var]],
+                             col = grDevices::adjustcolor(col, 0.4))
+    } else {
+      at <- seq_along(cv$x)
+      ## a point sitting on the frame reads as clipped, and a tight interval
+      ## puts every one of them there; a curve running to the edge does not
+      yl <- yl + c(-1, 1) * 0.04 * max(diff(yl), 1e-8)
+      .gcall(graphics::plot,
+             list(x = at, y = cv$fit, type = "n", bty = "n", ylim = yl,
+                  xlim = c(0.5, length(at) + 0.5), xaxt = "n",
+                  xlab = t$var, ylab = t$ylab, main = names(curves)[i]), dots)
+      graphics::axis(1, at = at, labels = as.character(cv$x), lwd = 0,
+                     lwd.ticks = 1)
+      if (!all(is.na(cv$se)))
+        graphics::segments(at, lo, at, hi, col = col, lwd = lwd)
+      graphics::points(at, cv$fit, pch = .or_else(dots$pch, 19), col = col)
+    }
   }
   invisible(curves)
 }

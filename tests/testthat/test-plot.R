@@ -71,11 +71,66 @@ test_that("by= factor smooths are drawn per level", {
   d <- data.frame(x = runif(n), g = factor(sample(3, n, TRUE)))
   d$y <- stats::rnorm(n, sin(2 * pi * d$x) * as.numeric(d$g), 0.4)
   f <- gamRTMB(y ~ list(mean = ~ g + s(x, by = g, k = 8)), data = d)
-  r <- plot(f)
+  r <- plot(f, all.terms = FALSE)
   expect_length(r, 3L)
   expect_true(all(grepl("s\\(x\\):g", names(r))))
   ## the three level curves must differ
   expect_gt(max(abs(r[[1]]$fit - r[[3]]$fit)), 0.1)
+  ## by default the g main effect gets a panel of its own, ahead of the smooths
+  expect_named(plot(f)[1], "mean: g")
+})
+
+test_that("parametric terms get panels, centred as predict.lm does", {
+  local_null_device()
+  set.seed(4); n <- 400L
+  d <- data.frame(z = stats::rnorm(n), g = factor(sample(letters[1:3], n, TRUE)))
+  d$y <- stats::rnorm(n, 1 + 2 * d$z + as.numeric(d$g), 0.5)
+  f <- gamRTMB(y ~ list(mean = ~ z + g, sd = ~ 1), data = d)
+
+  r <- plot(f)
+  expect_named(r, c("mean: z", "mean: g"))
+  expect_true(all(is.finite(r[["mean: z"]]$se)))
+
+  ## a factor term is one row per level, in level order; a numeric one a grid
+  expect_identical(as.character(r[["mean: g"]]$x), levels(d$g))
+  expect_identical(nrow(r[["mean: z"]]), 100L)
+  expect_equal(range(r[["mean: z"]]$x), range(d$z), tolerance = 1e-12)
+
+  ## the centring convention is stats', so the same terms fitted by lm agree
+  pt <- stats::predict(stats::lm(y ~ z + g, data = d), type = "terms")
+  expect_equal(r[["mean: g"]]$fit, as.vector(tapply(pt[, "g"], d$g, mean)),
+               tolerance = 1e-8)
+  fz <- stats::approxfun(r[["mean: z"]]$x, r[["mean: z"]]$fit)
+  expect_equal(fz(d$z), unname(pt[, "z"]), tolerance = 1e-6)
+
+  ## and the standard errors are those of the same linear form
+  V <- stats::vcov(f)
+  expect_equal(r[["mean: z"]]$se,
+               abs(r[["mean: z"]]$x - mean(d$z)) * sqrt(V["mean:z", "mean:z"]),
+               tolerance = 1e-10)
+})
+
+test_that("a model without smooths still plots its terms", {
+  local_null_device()
+  set.seed(5); n <- 300L
+  d <- data.frame(z = stats::rnorm(n), x = runif(n))
+  d$y <- stats::rnorm(n, d$z, exp(-1 + d$x))
+  f <- gamRTMB(y ~ list(mean = ~ z, sd = ~ x), data = d)
+  expect_named(plot(f), c("mean: z", "sd: x"))
+  expect_error(plot(f, all.terms = FALSE), "no smooth terms")
+  ## an intercept-only model has nothing to draw either way
+  f0 <- gamRTMB(y ~ list(mean = ~ 1), data = d)
+  expect_error(plot(f0), "every distributional parameter is an intercept")
+})
+
+test_that("parametric interactions are reported and skipped", {
+  local_null_device()
+  set.seed(6); n <- 400L
+  d <- data.frame(z = stats::rnorm(n), g = factor(sample(letters[1:2], n, TRUE)))
+  d$y <- stats::rnorm(n, d$z * as.numeric(d$g), 0.5)
+  f <- gamRTMB(y ~ list(mean = ~ z * g), data = d)
+  expect_message(r <- plot(f), "not drawable")
+  expect_named(r, c("mean: z", "mean: g"))
 })
 
 test_that("layout is restored after plotting", {

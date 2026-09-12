@@ -17,6 +17,7 @@
   nsim = 1,
   ask = FALSE,
   n = 200,
+  all.terms = TRUE,
   ...
 )
 }
@@ -25,7 +26,7 @@
 
 \item{type}{\code{"terms"} (default), \code{"qq"} or \code{"worm"}.}
 
-\item{select}{Which smooths to draw: an integer index, or a pattern matched
+\item{select}{Which terms to draw: an integer index, or a pattern matched
 against the \code{parameter: term} labels (e.g. \code{"sd"} or \code{"s(x1)"}). Defaults
 to all of them.}
 
@@ -52,6 +53,9 @@ fitting everything onto one page.}
 
 \item{n}{Grid resolution for term curves.}
 
+\item{all.terms}{Give parametric terms their own panels in a term plot,
+alongside the smooths. \code{TRUE} by default; see the section above.}
+
 \item{...}{Passed to \code{\link[=plot]{plot()}}.}
 }
 \value{
@@ -65,7 +69,7 @@ Plot a gamRTMB fit
 }
 \section{Term plots (\code{type = "terms"})}{
 
-One panel per smooth, showing its contribution to that distributional
+One panel per term, showing its contribution to that distributional
 parameter's linear predictor — the scale on which terms are additive — with
 a \strong{pointwise} \eqn{\pm 2} standard error band. The band comes from
 \code{\link[=vcov.gamRTMB]{vcov.gamRTMB()}}'s joint covariance, so it includes the uncertainty in the
@@ -73,9 +77,22 @@ smoothing parameters (mgcv's \code{unconditional = TRUE}); it needs a fit made
 with \code{joint_precision = TRUE}, which is the default. Panels are titled
 \code{parameter: term}, since terms belong to different parameters.
 
-Only one-dimensional smooths of a numeric covariate are drawn. Tensor
-products, random effects (\code{bs = "re"}) and factor-smooth interactions
-(\code{bs = "fs"}) are reported and skipped rather than drawn misleadingly.
+Parametric terms get panels too, as in \code{gamlss::term.plot} and unlike
+\code{\link[mgcv:plot.gam]{mgcv::plot.gam()}}, whose \code{all.terms} defaults to \code{FALSE}. A term is a
+contribution to a parameter's predictor whether or not it is penalized, and
+what a distributional model is for is usually how those contributions
+differ between parameters; a parameter carrying no smooth at all should
+still show what does act on it. Set \code{all.terms = FALSE} for the mgcv
+behaviour. A parametric term's columns are centred at their means over the
+fitting data, as in \code{\link[stats:predict.lm]{stats::predict.lm()}} with \code{type = "terms"}, so a panel
+shows the term's variation rather than the level the intercept already
+carries. A categorical term is drawn as an estimate and interval per level
+rather than as a curve.
+
+Only one-dimensional terms in a single variable are drawn: on the smooth
+side that excludes tensor products, random effects (\code{bs = "re"}) and
+factor-smooth interactions (\code{bs = "fs"}), and on the parametric side
+interactions. They are reported and skipped rather than drawn misleadingly.
 }
 
 \section{Quantile plots (\code{type = "quantile"})}{

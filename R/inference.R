@@ -170,7 +170,15 @@ edf.gamRTMB <- function(object, ...) {
     stop("standard errors on smooth terms need a fit made with ",
          "joint_precision = TRUE")
   Q <- as.matrix(jp)
+  ## A model with no smooths has nothing for the outer optimiser to estimate,
+  ## and RTMB leaves the joint precision unnamed when the fixed-effect vector
+  ## is empty. The block order is the parameter list's, so the names can be
+  ## recovered from it; without this a purely parametric fit has no standard
+  ## errors at all.
   nm <- colnames(Q)
+  if (is.null(nm)) nm <- names(fit$obj$env$par)
+  if (length(nm) != ncol(Q))
+    stop("the joint precision does not match the parameter vector")
   ## guard before the square root: at this dynamic range the diagonal itself
   ## can come back negative
   dg <- diag(Q); dg[!is.finite(dg) | dg <= 0] <- 1
