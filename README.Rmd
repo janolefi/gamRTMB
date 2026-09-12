@@ -53,9 +53,9 @@ mean is famously hard to model — and the variance changes just as much.
 library(gamRTMB)
 data(mcycle, package = "MASS")
 
-fit <- gamRTMB(accel ~ list(mean = ~ s(times, k = 20),
+fit <- gamRTMB(accel ~ list(mean = ~ s(times, k = 15),
                             sd   = ~ s(times, k = 10)),
-               data = mcycle)
+               data = mcycle, family = fam("skewnorm2"))
 summary(fit)
 ```
 
@@ -77,7 +77,7 @@ are in `vignette("gamRTMB")`.
 | Formula | `y ~ list(mean = ~ s(x), sd = ~ s(z))`, one one-sided formula per parameter, missing ones get `~1` |
 | Smooths | `s()`, `t2()`, `by=`, `bs="fs"`, `bs="re"`, shrinkage bases, and `id=` to share smoothing parameters |
 | Spatial | `bs="mrf"` Markov random fields over an adjacency graph, or any precision matrix via `xt=list(penalty=)`; `bs="spde"` Matern fields on an [fmesher](https://cran.r-project.org/package=fmesher) mesh. Both kept sparse, so a few thousand regions or mesh nodes is routine |
-| Criterion | REML by default (coefficients integrated out by the same Laplace approximation), or ML |
+| Criterion | `REML` by default (coefficients integrated out by the same Laplace approximation), `ML`, or `aREML` — the REML criterion optimised by extended Fellner–Schall, which fits four-parameter families the other two cannot start |
 | Inference | `summary()`, `vcov()`, `edf()`, `AIC()`/`BIC()`, `predict()` with standard errors |
 | Diagnostics | `residuals()` gives randomised quantile residuals; `plot(type = "worm")` |
 | Also | `weights`, `offset()` inside a parameter's formula, `na.action` |
@@ -100,6 +100,4 @@ sample grows.
 Not supported: `te()` (mgcv itself declines `smooth2random(type = 2)` for it —
 use `t2()`), `fx = TRUE`, and smooths whose unpenalized null spaces overlap
 (use a shrinkage basis, `bs = "ts"`). Not yet implemented: smooth-term
-p-values, 2-D smooth plots, and an extended Fellner–Schall fitting engine as
-an alternative to the Laplace one — `dev/NOTES-fellner-schall.md` records the
-derivation and the seams it needs.
+p-values and 2-D smooth plots.

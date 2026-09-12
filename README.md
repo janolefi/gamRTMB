@@ -44,32 +44,34 @@ just as much.
 library(gamRTMB)
 data(mcycle, package = "MASS")
 
-fit <- gamRTMB(accel ~ list(mean = ~ s(times, k = 20),
+fit <- gamRTMB(accel ~ list(mean = ~ s(times, k = 15),
                             sd   = ~ s(times, k = 10)),
-               data = mcycle)
+               data = mcycle, family = fam("skewnorm2"))
 summary(fit)
 #> 
-#> Family: norm   [dnorm from RTMB]
-#> Links:  mean = identity,  sd = log
+#> Family: skewnorm2   [dskewnorm2 from RTMBdist]
+#> Links:  mean = identity,  sd = log,  alpha = identity
 #> 
 #> Formula:
-#>   mean ~ s(times, k = 20)
-#>     sd ~ s(times, k = 10)
+#>    mean ~ s(times, k = 15)
+#>      sd ~ s(times, k = 10)
+#>   alpha ~ 1
 #> 
 #> Parametric coefficients:
-#>                   Estimate Std. Error z value Pr(>|z|)    
-#> mean:(Intercept) -25.21806    1.85310  -13.61   <2e-16 ***
-#> sd:(Intercept)     2.58334    0.06443   40.10   <2e-16 ***
+#>                    Estimate Std. Error z value Pr(>|z|)    
+#> mean:(Intercept)  -25.10791    1.86401  -13.47   <2e-16 ***
+#> sd:(Intercept)      2.62085    0.06629   39.54   <2e-16 ***
+#> alpha:(Intercept)  -0.85682    1.33923   -0.64    0.522    
 #> ---
 #> Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 #> 
 #> Smooth terms:
 #>           term    edf  k        sp
-#>  mean:s(times) 14.382 19 2.893e-06
-#>  sd:s(times)    7.150  9  0.009119
+#>  mean:s(times) 12.159 14 4.684e-06
+#>  sd:s(times)    6.931  9   0.01052
 #> 
-#> Total EDF = 23.53   n = 133
-#> -REML = 587.275   logLik = -532.303   AIC = 1111.67
+#> Total EDF = 22.09   n = 133
+#> -REML = 586.710   logLik = -537.209   AIC = 1118.60
 ```
 
 Once every parameter varies, the useful output is covariate-dependent
@@ -92,7 +94,7 @@ else are in `vignette("gamRTMB")`.
 | Formula | `y ~ list(mean = ~ s(x), sd = ~ s(z))`, one one-sided formula per parameter, missing ones get `~1` |
 | Smooths | `s()`, `t2()`, `by=`, `bs="fs"`, `bs="re"`, shrinkage bases, and `id=` to share smoothing parameters |
 | Spatial | `bs="mrf"` Markov random fields over an adjacency graph, or any precision matrix via `xt=list(penalty=)`; `bs="spde"` Matern fields on an [fmesher](https://cran.r-project.org/package=fmesher) mesh. Both kept sparse, so a few thousand regions or mesh nodes is routine |
-| Criterion | REML by default (coefficients integrated out by the same Laplace approximation), or ML |
+| Criterion | `REML` by default (coefficients integrated out by the same Laplace approximation), `ML`, or `aREML` — the REML criterion optimised by extended Fellner–Schall, which fits four-parameter families the other two cannot start |
 | Inference | `summary()`, `vcov()`, `edf()`, `AIC()`/`BIC()`, `predict()` with standard errors |
 | Diagnostics | `residuals()` gives randomised quantile residuals; `plot(type = "worm")` |
 | Also | `weights`, `offset()` inside a parameter’s formula, `na.action` |
@@ -116,7 +118,4 @@ sample grows.
 Not supported: `te()` (mgcv itself declines `smooth2random(type = 2)`
 for it — use `t2()`), `fx = TRUE`, and smooths whose unpenalized null
 spaces overlap (use a shrinkage basis, `bs = "ts"`). Not yet
-implemented: smooth-term p-values, 2-D smooth plots, and an extended
-Fellner–Schall fitting engine as an alternative to the Laplace one —
-`dev/NOTES-fellner-schall.md` records the derivation and the seams it
-needs.
+implemented: smooth-term p-values and 2-D smooth plots.
