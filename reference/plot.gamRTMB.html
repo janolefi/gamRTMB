@@ -57,6 +57,7 @@
 <span>  nsim <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  ask <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  n <span class="op">=</span> <span class="fl">200</span>,</span>
+<span>  all.terms <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -74,7 +75,7 @@
 
 
 <dt id="arg-select">select<a class="anchor" aria-label="anchor" href="#arg-select"></a></dt>
-<dd><p>Which smooths to draw: an integer index, or a pattern matched
+<dd><p>Which terms to draw: an integer index, or a pattern matched
 against the <code>parameter: term</code> labels (e.g. <code>"sd"</code> or <code>"s(x1)"</code>). Defaults
 to all of them.</p></dd>
 
@@ -120,6 +121,11 @@ fitting everything onto one page.</p></dd>
 <dd><p>Grid resolution for term curves.</p></dd>
 
 
+<dt id="arg-all-terms">all.terms<a class="anchor" aria-label="anchor" href="#arg-all-terms"></a></dt>
+<dd><p>Give parametric terms their own panels in a term plot,
+alongside the smooths. <code>TRUE</code> by default; see the section above.</p></dd>
+
+
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
 <dd><p>Passed to <code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code>.</p></dd>
 
@@ -135,16 +141,28 @@ data frame of <code>at</code>, <code>y</code> and <code>density</code> for <code
     <h2 id="term-plots-type-terms-">Term plots (<code>type = "terms"</code>)<a class="anchor" aria-label="anchor" href="#term-plots-type-terms-"></a></h2>
 
 
-<p>One panel per smooth, showing its contribution to that distributional
+<p>One panel per term, showing its contribution to that distributional
 parameter's linear predictor — the scale on which terms are additive — with
 a <strong>pointwise</strong> \(\pm 2\) standard error band. The band comes from
 <code><a href="vcov.gamRTMB.html">vcov.gamRTMB()</a></code>'s joint covariance, so it includes the uncertainty in the
 smoothing parameters (mgcv's <code>unconditional = TRUE</code>); it needs a fit made
 with <code>joint_precision = TRUE</code>, which is the default. Panels are titled
 <code>parameter: term</code>, since terms belong to different parameters.</p>
-<p>Only one-dimensional smooths of a numeric covariate are drawn. Tensor
-products, random effects (<code>bs = "re"</code>) and factor-smooth interactions
-(<code>bs = "fs"</code>) are reported and skipped rather than drawn misleadingly.</p>
+<p>Parametric terms get panels too, as in <code><a href="https://rdrr.io/pkg/gamlss/man/term.plot.html" class="external-link">gamlss::term.plot</a></code> and unlike
+<code><a href="https://rdrr.io/pkg/mgcv/man/plot.gam.html" class="external-link">mgcv::plot.gam()</a></code>, whose <code>all.terms</code> defaults to <code>FALSE</code>. A term is a
+contribution to a parameter's predictor whether or not it is penalized, and
+what a distributional model is for is usually how those contributions
+differ between parameters; a parameter carrying no smooth at all should
+still show what does act on it. Set <code>all.terms = FALSE</code> for the mgcv
+behaviour. A parametric term's columns are centred at their means over the
+fitting data, as in <code><a href="https://rdrr.io/r/stats/predict.lm.html" class="external-link">stats::predict.lm()</a></code> with <code>type = "terms"</code>, so a panel
+shows the term's variation rather than the level the intercept already
+carries. A categorical term is drawn as an estimate and interval per level
+rather than as a curve.</p>
+<p>Only one-dimensional terms in a single variable are drawn: on the smooth
+side that excludes tensor products, random effects (<code>bs = "re"</code>) and
+factor-smooth interactions (<code>bs = "fs"</code>), and on the parametric side
+interactions. They are reported and skipped rather than drawn misleadingly.</p>
     </div>
     <div class="section level2">
     <h2 id="quantile-plots-type-quantile-">Quantile plots (<code>type = "quantile"</code>)<a class="anchor" aria-label="anchor" href="#quantile-plots-type-quantile-"></a></h2>

@@ -10,8 +10,8 @@ RTMBdist.
 ``` r
 gamRTMB(
   formula,
-  data,
   family = fam("norm"),
+  data = NULL,
   weights = NULL,
   na.action = stats::na.omit,
   knots = NULL,
@@ -41,17 +41,18 @@ fitted(object, ...)
 
   A two-sided formula whose right-hand side is a
   [`list()`](https://rdrr.io/r/base/list.html) of per-parameter
-  formulas.
-
-- data:
-
-  A data frame. Every model variable must be a column of it.
+  formulas, or a plain right-hand side for the family's first parameter.
 
 - family:
 
   A `gamRTMB_family`, from
   [`fam()`](https://janolefi.github.io/gamRTMB/reference/fam.md). See
   [`families()`](https://janolefi.github.io/gamRTMB/reference/families.md).
+
+- data:
+
+  A data frame holding every model variable, or `NULL` (the default) to
+  take them from the environment of `formula`.
 
 - weights:
 
@@ -156,6 +157,22 @@ declares but the formula omits are given `~1`. Parameter names are the
 density's own (`xi`, `omega`, `alpha` for a skew normal), not generic
 location/scale/shape labels.
 
+A plain right-hand side is shorthand for modelling the family's *first*
+parameter and leaving the rest constant, so `y ~ s(x)` means
+`y ~ list(mean = ~ s(x))` for `fam("norm")`. That is the ordinary gam
+formula, and it is what makes the one-parameter case read like one.
+
+## Data
+
+`data` is optional. Without it the model variables are looked up where
+the formula was written, as in
+[`stats::glm()`](https://rdrr.io/r/stats/glm.html) or
+[`mgcv::gam()`](https://rdrr.io/pkg/mgcv/man/gam.html); they are
+collected into a data frame first, so everything downstream —
+`na.action`, [`predict()`](https://rdrr.io/r/stats/predict.html), the
+plots — sees the same rectangle either way. Variables found this way
+must all have the same length.
+
 ## Sparse penalties
 
 A smooth whose penalty is a sparse precision matrix – `bs = "mrf"` over
@@ -224,4 +241,13 @@ edf(fit)
 #>   parameter  term      edf k        sp id
 #> 1      mean s(x1) 5.302745 7     0.121   
 #> 2        sd s(x2) 1.000000 7 3.658e+08   
+
+## a plain right-hand side models the family's first parameter
+gamRTMB(y ~ s(x1, k = 8), data = d)
+#> gamRTMB fit
+#>   family:    norm (mean/identity, sd/log)
+#>   criterion: REML   engine: laplace
+#>   converged: TRUE   -REML: 205.3397   max|grad|: 1.89e-08
+#>   observations: 200
+#>   coefficients: 3 fixed (incl. null spaces), 6 penalized; 1 smoothing parameter
 ```

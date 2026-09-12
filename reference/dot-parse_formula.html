@@ -63,7 +63,8 @@ to exist before formula processing.</p>
 
 
 <dl><dt id="arg-formula">formula<a class="anchor" aria-label="anchor" href="#arg-formula"></a></dt>
-<dd><p>e.g. <code>y ~ list(mean = ~ s(x1) + s(x2), sd = ~ s(x1))</code>.</p></dd>
+<dd><p>e.g. <code>y ~ list(mean = ~ s(x1) + s(x2), sd = ~ s(x1))</code>, or
+<code>y ~ s(x1) + s(x2)</code> for the first parameter alone.</p></dd>
 
 
 <dt id="arg-parnames">parnames<a class="anchor" aria-label="anchor" href="#arg-parnames"></a></dt>
@@ -74,6 +75,14 @@ to exist before formula processing.</p>
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
     <p>A list with the response expression and one formula per parameter,
 ordered as <code>parnames</code>.</p>
+    </div>
+    <div class="section level2">
+    <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
+    <p>A right-hand side that is not a <code><a href="https://rdrr.io/r/base/list.html" class="external-link">list()</a></code> call is taken as the formula for
+the family's first parameter, so <code>y ~ s(x)</code> and
+<code>y ~ list(mean = ~ s(x))</code> are the same model for <code>fam("norm")</code>. The point
+is not brevity but that a model of one parameter should look like an
+ordinary gam formula, which is what it is.</p>
     </div>
 
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

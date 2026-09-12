@@ -10,7 +10,14 @@ response and prior weights aligned to it.
 ## Usage
 
 ``` r
-.model_data(response, par_formulas, data, weights, na.action)
+.model_data(
+  response,
+  par_formulas,
+  data,
+  weights,
+  na.action,
+  env = parent.frame()
+)
 ```
 
 ## Arguments
@@ -25,7 +32,7 @@ response and prior weights aligned to it.
 
 - data:
 
-  A data frame.
+  A data frame, or `NULL` to look the variables up in `env`.
 
 - weights:
 
@@ -36,12 +43,18 @@ response and prior weights aligned to it.
   Missing-data action, e.g.
   [`stats::na.omit()`](https://rdrr.io/r/stats/na.fail.html).
 
+- env:
+
+  Environment for the variables when `data` is `NULL`.
+
 ## Value
 
 `list(data, y, weights, dropped)`.
 
 ## Details
 
-Model variables must be columns of `data`. R would otherwise let them
-come from the calling environment, where dropping rows for missing
-values could silently misalign them against the response.
+With a `data` argument, model variables must be columns of it. R would
+otherwise let some of them come from the calling environment, where
+dropping rows for missing values could silently misalign them against
+the response. Without one, everything comes from `env` and is rectangled
+here, before any row is dropped, so the same guarantee holds.

@@ -16,6 +16,7 @@
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-empty_corner.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-family_overrides.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-fan_cols.html</loc></url>
+<url><loc>https://janolefi.github.io/gamRTMB/reference/dot-fill_formulas.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-find_density.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-find_pfun.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-fit_efs.html</loc></url>
@@ -34,6 +35,8 @@
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-null_space.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-pal.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-panel_grid.html</loc></url>
+<url><loc>https://janolefi.github.io/gamRTMB/reference/dot-para_part.html</loc></url>
+<url><loc>https://janolefi.github.io/gamRTMB/reference/dot-para_terms.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-parse_formula.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-penalized_hessian.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-penalty_matrix.html</loc></url>
@@ -51,6 +54,8 @@
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-smooth_part.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-spde_extent.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-spde_loc.html</loc></url>
+<url><loc>https://janolefi.github.io/gamRTMB/reference/dot-term_grid.html</loc></url>
+<url><loc>https://janolefi.github.io/gamRTMB/reference/dot-typical.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/dot-use_sparse.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/edf.html</loc></url>
 <url><loc>https://janolefi.github.io/gamRTMB/reference/fam.html</loc></url>

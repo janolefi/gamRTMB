@@ -19,6 +19,7 @@ plot(
   nsim = 1,
   ask = FALSE,
   n = 200,
+  all.terms = TRUE,
   ...
 )
 ```
@@ -35,7 +36,7 @@ plot(
 
 - select:
 
-  Which smooths to draw: an integer index, or a pattern matched against
+  Which terms to draw: an integer index, or a pattern matched against
   the `parameter: term` labels (e.g. `"sd"` or `"s(x1)"`). Defaults to
   all of them.
 
@@ -80,6 +81,11 @@ plot(
 
   Grid resolution for term curves.
 
+- all.terms:
+
+  Give parametric terms their own panels in a term plot, alongside the
+  smooths. `TRUE` by default; see the section above.
+
 - ...:
 
   Passed to [`plot()`](https://rdrr.io/r/graphics/plot.default.html).
@@ -93,7 +99,7 @@ data frame of `at`, `y` and `density` for `type = "density"`.
 
 ## Term plots (`type = "terms"`)
 
-One panel per smooth, showing its contribution to that distributional
+One panel per term, showing its contribution to that distributional
 parameter's linear predictor — the scale on which terms are additive —
 with a **pointwise** \\\pm 2\\ standard error band. The band comes from
 [`vcov.gamRTMB()`](https://janolefi.github.io/gamRTMB/reference/vcov.gamRTMB.md)'s
@@ -102,9 +108,26 @@ parameters (mgcv's `unconditional = TRUE`); it needs a fit made with
 `joint_precision = TRUE`, which is the default. Panels are titled
 `parameter: term`, since terms belong to different parameters.
 
-Only one-dimensional smooths of a numeric covariate are drawn. Tensor
-products, random effects (`bs = "re"`) and factor-smooth interactions
-(`bs = "fs"`) are reported and skipped rather than drawn misleadingly.
+Parametric terms get panels too, as in
+[`gamlss::term.plot`](https://rdrr.io/pkg/gamlss/man/term.plot.html) and
+unlike [`mgcv::plot.gam()`](https://rdrr.io/pkg/mgcv/man/plot.gam.html),
+whose `all.terms` defaults to `FALSE`. A term is a contribution to a
+parameter's predictor whether or not it is penalized, and what a
+distributional model is for is usually how those contributions differ
+between parameters; a parameter carrying no smooth at all should still
+show what does act on it. Set `all.terms = FALSE` for the mgcv
+behaviour. A parametric term's columns are centred at their means over
+the fitting data, as in
+[`stats::predict.lm()`](https://rdrr.io/r/stats/predict.lm.html) with
+`type = "terms"`, so a panel shows the term's variation rather than the
+level the intercept already carries. A categorical term is drawn as an
+estimate and interval per level rather than as a curve.
+
+Only one-dimensional terms in a single variable are drawn: on the smooth
+side that excludes tensor products, random effects (`bs = "re"`) and
+factor-smooth interactions (`bs = "fs"`), and on the parametric side
+interactions. They are reported and skipped rather than drawn
+misleadingly.
 
 ## Quantile plots (`type = "quantile"`)
 

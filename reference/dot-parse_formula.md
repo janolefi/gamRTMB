@@ -17,7 +17,8 @@ formula processing.
 
 - formula:
 
-  e.g. `y ~ list(mean = ~ s(x1) + s(x2), sd = ~ s(x1))`.
+  e.g. `y ~ list(mean = ~ s(x1) + s(x2), sd = ~ s(x1))`, or
+  `y ~ s(x1) + s(x2)` for the first parameter alone.
 
 - parnames:
 
@@ -27,3 +28,12 @@ formula processing.
 
 A list with the response expression and one formula per parameter,
 ordered as `parnames`.
+
+## Details
+
+A right-hand side that is not a
+[`list()`](https://rdrr.io/r/base/list.html) call is taken as the
+formula for the family's first parameter, so `y ~ s(x)` and
+`y ~ list(mean = ~ s(x))` are the same model for `fam("norm")`. The
+point is not brevity but that a model of one parameter should look like
+an ordinary gam formula, which is what it is.

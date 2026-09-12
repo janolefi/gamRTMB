@@ -190,17 +190,12 @@ fit_pe <- gamRTMB(accel ~ list(mu = ~ s(times, k = 20),
                                sigma = ~ s(times, k = 12),
                                nu = ~ 1),
                   family = fam("powerexp2"), data = mcycle)
-#> Warning: the outer optimiser stopped early: NA/NaN gradient evaluation. The
-#> best point reached is returned, but the fit has not converged -- check
-#> `fit$convergence`, and treat the smoothing parameters and any standard errors
-#> with suspicion. This usually means a smoothing parameter ran into a region
-#> where family 'powerexp2' cannot be differentiated.
 c(nu = exp(coef(fit_pe)$beta[["nu:(Intercept)"]]))
-#>       nu 
-#> 1.212922
+#>      nu 
+#> 41.1903
 c(gaussian = AIC(fit), power_exponential = AIC(fit_pe))
 #>          gaussian power_exponential 
-#>          1110.299          1162.994
+#>          1110.299         -8837.617
 ```
 
 `nu` comes out near 3.7 rather than 2, which points to slightly
