@@ -38,6 +38,7 @@ converge to a worse optimum more often, which is the
 pinned-to-null-space mode above.
 
 Since no single value serves, a start that leaves the objective
-non-finite is retried over `.sigma_frac_ladder()` rather than left to
-the user to guess. See `dev/NOTES-sigma-frac.md` for the measurements,
-and `dev/bench-sigma-frac.R` to reproduce them.
+non-finite is retried over
+[.sigma_frac_ladder](https://janolefi.github.io/gamRTMB/reference/dot-sigma_frac_ladder.md)
+rather than left to the user to guess. See `dev/NOTES-sigma-frac.md` for
+the measurements, and `dev/bench-sigma-frac.R` to reproduce them.

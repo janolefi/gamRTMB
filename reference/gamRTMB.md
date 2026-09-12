@@ -88,9 +88,10 @@ fitted(object, ...)
   [`.init_pars()`](https://janolefi.github.io/gamRTMB/reference/dot-init_pars.md).
   Raise it if a fit converges to an over-smooth solution. If the
   objective is not finite here, a few other values are tried
-  automatically before giving up (see `.sigma_frac_ladder()`) and the
-  one used is reported; passing this argument explicitly does not switch
-  that off, but passing `start` does.
+  automatically before giving up (see
+  [.sigma_frac_ladder](https://janolefi.github.io/gamRTMB/reference/dot-sigma_frac_ladder.md))
+  and the one used is reported; passing this argument explicitly does
+  not switch that off, but passing `start` does.
 
 - sparse:
 

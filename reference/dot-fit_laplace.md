@@ -49,6 +49,7 @@ handled in two steps, both of which are about failing cheaply rather
 than about finding a better start:
 [`.probe_finite()`](https://janolefi.github.io/gamRTMB/reference/dot-probe_finite.md)
 asks the question with a short inner iteration cap, and a `FALSE` sends
-the caller to the next rung of `.sigma_frac_ladder()`. If every rung
-fails, the fit proceeds from the original starting values under the full
-cap, so the ladder can only add fits, never remove one.
+the caller to the next rung of
+[.sigma_frac_ladder](https://janolefi.github.io/gamRTMB/reference/dot-sigma_frac_ladder.md).
+If every rung fails, the fit proceeds from the original starting values
+under the full cap, so the ladder can only add fits, never remove one.

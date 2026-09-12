@@ -17,7 +17,9 @@ work.
 ## Details
 
 A probe is only ever an accelerator: a `FALSE` sends the caller to the
-next rung of .sigma_frac_ladder, and if every rung fails the fit
-proceeds from the original starting values under the full cap, exactly
-as it would have. So a probe that is wrong about a slow-but-sound inner
-solve costs a few seconds, never a fit.
+next rung of
+[.sigma_frac_ladder](https://janolefi.github.io/gamRTMB/reference/dot-sigma_frac_ladder.md),
+and if every rung fails the fit proceeds from the original starting
+values under the full cap, exactly as it would have. So a probe that is
+wrong about a slow-but-sound inner solve costs a few seconds, never a
+fit.
