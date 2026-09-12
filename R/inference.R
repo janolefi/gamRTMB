@@ -21,6 +21,31 @@
   list(H = H, i_beta = which(nm == "beta"), i_b = which(nm == "b"))
 }
 
+## Round-off allowance on an edf_j, which is mathematically confined to
+## [0, 1]. Generous by the standards of the sparse solve that produces it and
+## nowhere near the scale of a real violation: the fits that break this are
+## out by thousands, not by parts in a million.
+.edf_tol <- 1e-6
+
+#' Is a sparse symmetric matrix positive definite?
+#'
+#' `Matrix::chol()` rather than `Matrix::Cholesky()`: the latter computes an
+#' LDL' factorisation, which exists perfectly well for an indefinite matrix
+#' and returns with nothing worse than a CHOLMOD warning, so it answers a
+#' different question from the one being asked here. `chol()` fails on an
+#' indefinite matrix, which is the answer wanted.
+#'
+#' @param h A symmetric sparse matrix, or `NULL`.
+#' @return `TRUE`, `FALSE`, or `NA` if `h` is missing or has non-finite
+#'   entries, so the question cannot be put.
+#' @keywords internal
+.is_pd <- function(h) {
+  if (is.null(h)) return(NA)
+  if (anyNA(as.numeric(h))) return(NA)
+  !inherits(tryCatch(Matrix::chol(h), error = function(e) e,
+                     warning = function(w) w), "condition")
+}
+
 #' Effective degrees of freedom per smooth
 #'
 #' TMB does not hand these over the way mgcv's PIRLS does, so they are derived
@@ -40,6 +65,26 @@
 #'
 #' Checked against [mgcv::gaulss()], which agrees to three decimals on both
 #' untied and `id`-tied models.
+#'
+#' @section When the EDF do not exist:
+#' All of that assumes \eqn{H_{data}} is positive semi-definite, which is what
+#' makes \eqn{F = H^{-1} H_{data}} a projection and puts every \eqn{edf_j} in
+#' \eqn{[0, 1]}. At a point the optimiser never converged to it need not be,
+#' and the solve still returns numbers: a four-parameter Box-Cox fit on
+#' `film90` gives EDF near \eqn{-6000} for a rank-9 basis.
+#'
+#' Note that it is \eqn{H_{data}} and not \eqn{H} that has to be checked.
+#' The penalty can and does rescue the sum: on that same fit \eqn{H} is
+#' positive definite while \eqn{H_{data} = H - S} has two negative
+#' eigenvalues, so a test on \eqn{H} passes and the EDF are still nonsense.
+#' Rather than factorise a second matrix, the \eqn{edf_j} are checked against
+#' the \eqn{[0, 1]} they are guaranteed to lie in -- the same statement, and
+#' already computed.
+#'
+#' A negative EDF is not a small inaccuracy to report with a caveat; it means
+#' the quantity does not exist at this point. So the column is `NA` instead,
+#' with a warning pointing at `max_grad`. See [.inner_indefinite()] for how a
+#' fit gets into that state.
 #'
 #' @param object A `gamRTMB` fit, made with `method = "REML"`.
 #' @param ... Ignored.
@@ -63,6 +108,19 @@ edf.gamRTMB <- function(object, ...) {
   D <- object$design
   ls <- object$log_sigma
   edf_all <- 1 - Matrix::diag(Matrix::solve(ph$H, .penalty_matrix(D, ls, ph)))
+  ## Every edf_j lies in [0, 1] when the EDF exist at all; the tolerance is
+  ## for the sparse solve's round-off, not for genuinely out-of-range values,
+  ## which run to thousands rather than to fractions.
+  if (any(edf_all < -.edf_tol | edf_all > 1 + .edf_tol)) {
+    warning("the effective degrees of freedom are not defined at these ",
+            "values: ", sum(edf_all < -.edf_tol | edf_all > 1 + .edf_tol),
+            " of ", length(edf_all), " coefficients fall outside [0, 1], so ",
+            "the data Hessian is not positive semi-definite here and ",
+            "H^-1 H_data is not a projection. They are reported as NA. This ",
+            "fit has not converged -- check `max_grad`; see ?gamRTMB for the ",
+            "starting-value and basis options.", call. = FALSE)
+    edf_all[] <- NA_real_
+  }
 
   rows <- list()
   for (p in D$parnames) for (j in seq_along(D$parts[[p]]$smooths)) {

@@ -145,7 +145,11 @@ summary.gamRTMB <- function(object, ...) {
                  n = D$n, dropped = object$dropped,
                  weighted = !is.null(object$weights),
                  objective = object$objective, convergence = object$convergence,
-                 logLik = ll, edf.total = if (!is.null(e)) attr(e, "edf.total"),
+                 logLik = ll,
+                 ## edf() has already decided this by returning NA, and has
+                 ## warned; reading it back keeps the judgement in one place
+                 edf_defined = is.null(e) || !all(is.na(e$edf)),
+                 edf.total = if (!is.null(e)) attr(e, "edf.total"),
                  aic = if (!is.null(ll)) stats::AIC(ll)),
             class = "summary.gamRTMB")
 }
@@ -181,7 +185,7 @@ print.summary.gamRTMB <- function(x, ...) {
   }
 
   cat("\n")
-  if (!is.null(x$edf.total))
+  if (!is.null(x$edf.total) && !is.na(x$edf.total))
     cat("Total EDF = ", sprintf("%.2f", x$edf.total), "   ", sep = "")
   cat("n = ", x$n, sep = "")
   if (isTRUE(x$dropped > 0))
@@ -190,11 +194,18 @@ print.summary.gamRTMB <- function(x, ...) {
   if (x$weighted) cat("  [prior weights]")
   cat("\n")
   cat("-", x$method, " = ", sprintf("%.3f", x$objective), sep = "")
-  if (!is.null(x$logLik))
-    cat("   logLik = ", sprintf("%.3f", as.numeric(x$logLik)),
-        "   AIC = ", sprintf("%.2f", x$aic), sep = "")
+  if (!is.null(x$logLik)) {
+    cat("   logLik = ", sprintf("%.3f", as.numeric(x$logLik)), sep = "")
+    ## AIC counts the EDF as its parameter count, so it goes when they do
+    if (!is.null(x$aic) && !is.na(x$aic))
+      cat("   AIC = ", sprintf("%.2f", x$aic), sep = "")
+  }
   cat("\n")
   if (!isTRUE(x$convergence)) cat("** the optimiser did not converge **\n")
+  if (isFALSE(x$edf_defined))
+    cat("** the effective degrees of freedom are undefined at these values, ",
+        "not merely\n   imprecise: the data Hessian is not positive ",
+        "semi-definite here **\n", sep = "")
   invisible(x)
 }
 

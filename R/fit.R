@@ -85,13 +85,24 @@
 #' inner Newton solve push a parameter out of the family's support, which
 #' shows up as a non-finite marginal objective; too clamped a start leaves the
 #' smooth pinned to its null space, where the REML gradient in log-sigma is
-#' nearly zero and the outer optimiser stalls. Over six simulated designs the
-#' two failure modes bracket a wide, flat optimum: on well-behaved families
-#' (Gaussian, gamma, beta, t) any `frac` between 0.5 and 0.005 reaches the
-#' same optimum to two decimals, while on four-parameter families it matters,
-#' with 0.05 converging on 172/180 fits against 168/180 at 0.2 and collapsing
-#' below 0.02. Hence the default. The cost of the smaller start is 20-40%%
-#' more outer iterations on the models that never had trouble.
+#' nearly zero and the outer optimiser stalls.
+#'
+#' On well-behaved families the two failure modes bracket a wide, flat
+#' optimum, and `frac` may as well not exist: over `norm`, `gamma2` and
+#' `beta2` every value from 0.2 down to 0.001 converges on all fifteen fits
+#' and agrees to seven significant figures. On four-parameter families it
+#' matters, but **not monotonically, and no value dominates** -- 0.01 does
+#' worst, with 0.2 and 0.001 on either side of it doing better, and the
+#' spread between families is far larger than the spread across `frac`. So
+#' 0.05 is a default rather than an optimum, kept because the evidence for
+#' moving it is four fits out of twenty-five. The small values additionally
+#' converge to a worse optimum more often, which is the pinned-to-null-space
+#' mode above.
+#'
+#' Since no single value serves, a start that leaves the objective non-finite
+#' is retried over [.sigma_frac_ladder()] rather than left to the user to
+#' guess. See `dev/NOTES-sigma-frac.md` for the measurements, and
+#' `dev/bench-sigma-frac.R` to reproduce them.
 #'
 #' @keywords internal
 .init_pars <- function(design, family, y, frac = 0.05, start = NULL) {
@@ -118,13 +129,12 @@
 
 ## Alternative variance-component starts, tried in this order when the first
 ## marginal evaluation is not finite. They are not a refinement of one
-## another: measured over seven families and five seeds, the number of fits
-## reaching a converged solution is not monotone in `frac`, and no value
-## dominates -- 0.01 did worst, with 0.2 and 0.001 on either side of it doing
-## better. So the point of the ladder is coverage, not a better default. The
-## small values buy their extra convergences partly with worse optima (the
-## smooth pinned to its null space), which is why they come last.
-## See .init_pars() for what `frac` means.
+## another: over eight families and five seeds the number of fits reaching a
+## converged solution is not monotone in `frac` and no value dominates, so the
+## point of the ladder is coverage rather than a better default. Ordered by
+## that table, with 0.001 last because it converges most often and misses the
+## optimum most often. See .init_pars() for what `frac` means, and
+## dev/NOTES-sigma-frac.md for the measurements.
 .sigma_frac_ladder <- c(0.005, 0.2, 0.001)
 
 ## Inner iteration cap for the probe below. A well-posed inner solve reaches
@@ -204,18 +214,10 @@
 .inner_indefinite <- function(obj, design, method, famname) {
   h <- tryCatch(obj$env$spHess(obj$env$par, random = TRUE),
                 error = function(e) NULL)
-  if (is.null(h) || anyNA(as.numeric(h))) return(NULL)
   ## A Cholesky is the cheap question ("is this positive definite?"); the
   ## eigen decomposition is only needed to name the directions, and is dense,
   ## so it is reserved for problems small enough to afford it.
-  ##
-  ## `Matrix::chol()` rather than `Matrix::Cholesky()`: the latter computes an
-  ## LDL' factorisation, which exists for an indefinite matrix and comes back
-  ## with a CHOLMOD *warning* rather than an error, so it answers the wrong
-  ## question. `chol()` fails, which is the answer wanted here.
-  pd <- !inherits(tryCatch(Matrix::chol(h), error = function(e) e,
-                           warning = function(w) w), "condition")
-  if (pd) return(NULL)
+  if (!isFALSE(.is_pd(h))) return(NULL)
   base <- paste0("the inner Hessian is not positive definite at the starting ",
                  "values, so the Laplace approximation's log determinant is ",
                  "undefined there")

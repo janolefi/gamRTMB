@@ -105,3 +105,54 @@ test_that("an explicit start is never overwritten by the ladder", {
               start = list(beta = c(2.6, 0, -1.5, 1, 0.69)))),
     "not positive definite")
 })
+
+## ---------------------------------------------------------------------------
+## EDF at a point the optimiser never reached
+
+test_that("healthy EDF sit inside the [0, 1] the guard checks", {
+  d <- sim_ls()
+  fit <- gamRTMB(y ~ list(mean = ~ s(x1, k = 8), sd = ~ s(x2, k = 8)), data = d)
+  ph <- .penalized_hessian(fit)
+  e <- 1 - Matrix::diag(Matrix::solve(ph$H,
+                                      .penalty_matrix(fit$design, fit$log_sigma, ph)))
+  expect_gte(min(e), -.edf_tol)
+  expect_lte(max(e), 1 + .edf_tol)
+  ## and the guard therefore stays out of the way
+  expect_silent(edf(fit))
+})
+
+test_that("EDF outside [0, 1] are reported as NA rather than as numbers", {
+  d <- sim_ls()
+  fit <- gamRTMB(y ~ list(mean = ~ s(x1, k = 8), sd = ~ s(x2, k = 8)), data = d)
+  ## Shrink the variance components without moving the mode, which is what a
+  ## fit stopped at a bad point amounts to as far as `1 - diag(H^-1 S)` is
+  ## concerned: S grows, the "projection" leaves [0, 1], and the EDF stop
+  ## meaning anything. Cheaper and more exact than fitting a family that does
+  ## this for real -- see .inner_indefinite() for one that does.
+  bad <- fit
+  bad$log_sigma <- fit$log_sigma - 10
+  expect_warning(e <- edf(bad), "not defined at these values")
+  expect_true(all(is.na(e$edf)))
+  expect_true(is.na(attr(e, "edf.total")))
+  ## the rest of the table still describes the model, so it is kept
+  expect_equal(e$term, edf(fit)$term)
+  expect_equal(e$k, edf(fit)$k)
+})
+
+test_that("summary says the EDF are undefined rather than printing a total", {
+  d <- sim_ls()
+  fit <- gamRTMB(y ~ list(mean = ~ s(x1, k = 8), sd = ~ s(x2, k = 8)), data = d)
+  bad <- fit
+  bad$log_sigma <- fit$log_sigma - 10
+  s <- suppressWarnings(summary(bad))
+  expect_false(s$edf_defined)
+  out <- paste(utils::capture.output(print(s)), collapse = "\n")
+  expect_match(out, "undefined at these values")
+  expect_no_match(out, "Total EDF")
+  ## AIC counts the EDF as its parameter count, so it goes too
+  expect_no_match(out, "AIC")
+  ## a healthy fit is untouched by all of this
+  ok <- paste(utils::capture.output(print(summary(fit))), collapse = "\n")
+  expect_match(ok, "Total EDF")
+  expect_match(ok, "AIC")
+})

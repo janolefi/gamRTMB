@@ -39,6 +39,28 @@ exactly 1 and penalized ones between 0 and 1.
 Checked against \code{\link[mgcv:gaulss]{mgcv::gaulss()}}, which agrees to three decimals on both
 untied and \code{id}-tied models.
 }
+\section{When the EDF do not exist}{
+
+All of that assumes \eqn{H_{data}} is positive semi-definite, which is what
+makes \eqn{F = H^{-1} H_{data}} a projection and puts every \eqn{edf_j} in
+\eqn{[0, 1]}. At a point the optimiser never converged to it need not be,
+and the solve still returns numbers: a four-parameter Box-Cox fit on
+\code{film90} gives EDF near \eqn{-6000} for a rank-9 basis.
+
+Note that it is \eqn{H_{data}} and not \eqn{H} that has to be checked.
+The penalty can and does rescue the sum: on that same fit \eqn{H} is
+positive definite while \eqn{H_{data} = H - S} has two negative
+eigenvalues, so a test on \eqn{H} passes and the EDF are still nonsense.
+Rather than factorise a second matrix, the \eqn{edf_j} are checked against
+the \eqn{[0, 1]} they are guaranteed to lie in -- the same statement, and
+already computed.
+
+A negative EDF is not a small inaccuracy to report with a caveat; it means
+the quantity does not exist at this point. So the column is \code{NA} instead,
+with a warning pointing at \code{max_grad}. See \code{\link[=.inner_indefinite]{.inner_indefinite()}} for how a
+fit gets into that state.
+}
+
 \examples{
 set.seed(1)
 d <- data.frame(x = runif(200)); d$y <- rnorm(200, sin(2 * pi * d$x), 0.3)
