@@ -1,19 +1,26 @@
 ## Everything downstream of the fit goes through .penalized_hessian(), so that
-## a second engine only has to supply that one accessor rather than have
-## edf() and vcov() reach into its internals.
+## a second fitting routine only has to supply that one accessor rather than
+## have edf() and vcov() reach into its internals.
 
 #' The penalized Hessian, in the design's own coefficient ordering
 #'
-#' The engine contract: return the Hessian of the joint penalized negative
-#' log-likelihood in the coefficients at the fitted mode, plus index vectors
-#' giving the row of `H` for each entry of `beta` and of `b`. Anything needing
-#' curvature — [edf()], smooth-term covariances — uses only this.
+#' The contract each fitting routine fills: return the Hessian of the joint
+#' penalized negative log-likelihood in the coefficients at the fitted mode,
+#' plus index vectors giving the row of `H` for each entry of `beta` and of
+#' `b`. Anything needing curvature — [edf()], smooth-term covariances — uses
+#' only this.
 #'
 #' @param fit A `gamRTMB` fit.
-#' @return `list(H, i_beta, i_b)`, or `NULL` if the engine cannot supply it.
+#' @return `list(H, i_beta, i_b)`, or `NULL` when the fit did not form it.
 #' @keywords internal
 .penalized_hessian <- function(fit) {
-  if (fit$engine != "laplace" || is.null(fit$obj)) return(NULL)
+  ## "aREML" forms this matrix itself, in the parameter list's own ordering,
+  ## `beta` then `b` -- which is the ordering this function promises.
+  if (identical(fit$method, "aREML"))
+    return(if (is.null(fit$H)) NULL else
+      list(H = fit$H, i_beta = seq_len(fit$design$nbeta),
+           i_b = fit$design$nbeta + seq_len(fit$design$nb)))
+  if (is.null(fit$obj)) return(NULL)
   if (fit$method != "REML") return(NULL)   # beta is not in the random vector
   obj <- fit$obj
   H <- obj$env$spHess(obj$env$last.par.best, random = TRUE)
@@ -41,7 +48,11 @@
 #' @keywords internal
 .is_pd <- function(h) {
   if (is.null(h)) return(NA)
-  if (anyNA(as.numeric(h))) return(NA)
+  ## The stored values, not `as.numeric(h)`: the latter expands a sparse
+  ## matrix to a dense vector, and this is asked once per outer iteration by
+  ## method = "aREML".
+  x <- if (methods::is(h, "sparseMatrix")) h@x else as.numeric(h)
+  if (anyNA(x)) return(NA)
   !inherits(tryCatch(Matrix::chol(h), error = function(e) e,
                      warning = function(w) w), "condition")
 }
@@ -103,8 +114,10 @@ edf <- function(object, ...) UseMethod("edf")
 edf.gamRTMB <- function(object, ...) {
   ph <- .penalized_hessian(object)
   if (is.null(ph))
-    stop("effective degrees of freedom need the coefficients in the random ",
-         "vector, i.e. method = \"REML\" with engine = \"laplace\"")
+    stop("effective degrees of freedom need the penalized Hessian over every ",
+         "coefficient, and method = \"ML\" does not form it: the unpenalized ",
+         "coefficients are fixed effects there rather than part of the random ",
+         "vector. Use method = \"REML\" or \"aREML\".")
   D <- object$design
   ls <- object$log_sigma
   edf_all <- 1 - Matrix::diag(Matrix::solve(ph$H, .penalty_matrix(D, ls, ph)))
@@ -189,7 +202,11 @@ edf.gamRTMB <- function(object, ...) {
 #' Joint covariance of the coefficients
 #'
 #' The `(beta, b)` block of the inverse joint precision, which includes the
-#' uncertainty in the smoothing parameters (mgcv's `unconditional = TRUE`).
+#' uncertainty in the smoothing parameters (mgcv's `unconditional = TRUE`) --
+#' under `method = "REML"` or `"ML"`. `"aREML"` has no joint precision and
+#' returns the inverse penalized Hessian, which conditions on the smoothing
+#' parameters instead; see the branch at the top of the function and
+#' [vcov.gamRTMB()].
 #'
 #' Computed as a Schur complement rather than by inverting the whole matrix.
 #' Writing the joint precision over coefficients `c` and log smoothing
@@ -223,6 +240,21 @@ edf.gamRTMB <- function(object, ...) {
 #'   the `beta` and `b` entries within it.
 #' @keywords internal
 .joint_cov <- function(fit) {
+  ## "aREML" never builds an `sdreport`, and could not fill this in from one
+  ## if it did: the joint precision's smoothing-parameter block comes from
+  ## differentiating the marginal criterion twice, which is the term
+  ## Fellner-Schall exists to avoid. What it has is the penalized Hessian,
+  ## whose inverse is the covariance *conditional* on the fitted smoothing
+  ## parameters -- mgcv's `unconditional = FALSE`. Intervals from it are a
+  ## little too narrow for the same reason mgcv's conditional ones are.
+  if (identical(fit$method, "aREML")) {
+    ph <- .penalized_hessian(fit)
+    if (is.null(ph))
+      stop("this fit did not keep its penalized Hessian, so the coefficient ",
+           "covariance is not available")
+    return(list(V = as.matrix(Matrix::solve(ph$H)),
+                ib = ph$i_beta, ir = ph$i_b))
+  }
   jp <- fit$sdr$jointPrecision
   if (is.null(jp))
     stop("standard errors on smooth terms need a fit made with ",

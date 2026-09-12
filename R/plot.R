@@ -44,9 +44,11 @@
 #' One panel per term, showing its contribution to that distributional
 #' parameter's linear predictor — the scale on which terms are additive — with
 #' a **pointwise** \eqn{\pm 2} standard error band. The band comes from
-#' [vcov.gamRTMB()]'s joint covariance, so it includes the uncertainty in the
-#' smoothing parameters (mgcv's `unconditional = TRUE`); it needs a fit made
-#' with `joint_precision = TRUE`, which is the default. Panels are titled
+#' [vcov.gamRTMB()]'s joint covariance. Under `method = "REML"` or `"ML"` that
+#' includes the uncertainty in the smoothing parameters (mgcv's
+#' `unconditional = TRUE`) and needs a fit made with `joint_precision = TRUE`,
+#' which is the default; under `method = "aREML"` it conditions on them, so the
+#' band is a little too narrow. Panels are titled
 #' `parameter: term`, since terms belong to different parameters.
 #'
 #' Parametric terms get panels too, as in `gamlss::term.plot` and unlike

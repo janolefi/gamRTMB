@@ -16,8 +16,19 @@ A labelled covariance matrix over the parametric and smooth
 null-space coefficients.
 }
 \description{
-The \verb{(beta, beta)} block of the inverse joint precision, so it includes the
-uncertainty in the smoothing parameters rather than conditioning on them
-(mgcv's \code{unconditional = TRUE}). Needs a fit made with
-\code{joint_precision = TRUE}, which is the default.
+Under \code{method = "REML"} or \code{"ML"}, the \verb{(beta, beta)} block of the inverse
+joint precision, so it includes the uncertainty in the smoothing parameters
+rather than conditioning on them (mgcv's \code{unconditional = TRUE}). Needs a
+fit made with \code{joint_precision = TRUE}, which is the default.
+}
+\details{
+\strong{Under \code{method = "aREML"} it is conditional instead} -- mgcv's
+\code{unconditional = FALSE} -- and so a little too narrow. There is no joint
+precision to take a block of: its smoothing-parameter part comes from
+differentiating the marginal criterion twice in the smoothing parameters,
+which is exactly the term the extended Fellner-Schall method exists to
+avoid computing. What that criterion has is the penalized Hessian, and its
+inverse is the covariance given the smoothing parameters it settled on.
+Everything downstream inherits this: the standard errors in
+\code{\link[=summary.gamRTMB]{summary.gamRTMB()}}, the bands from \code{\link[=predict.gamRTMB]{predict.gamRTMB()}} and the term plots.
 }

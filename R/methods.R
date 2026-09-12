@@ -5,12 +5,26 @@ print.gamRTMB <- function(x, ...) {
   cat("  family:    ", x$family$family, " (",
       paste(sprintf("%s/%s", x$family$parnames, x$family$links), collapse = ", "),
       ")\n", sep = "")
-  cat("  criterion: ", x$method, "   engine: ", x$engine, "\n", sep = "")
-  cat("  converged: ", x$convergence, "   -", x$method, ": ",
-      sprintf("%.4f", x$objective), "   max|grad|: ",
+  cat("  criterion: ", x$method,
+      if (identical(x$method, "aREML")) "  (extended Fellner-Schall)" else "",
+      "\n", sep = "")
+  ## The Fellner-Schall gradient drops a third-derivative term and so does not
+  ## reach zero at the optimum; naming it differently keeps it from being read
+  ## as a stationarity measure. See [.fit_efs()].
+  cat("  converged: ", x$convergence, "   -", .criterion_label(x$method), ": ",
+      sprintf("%.4f", x$objective),
+      if (identical(x$method, "aREML")) "   max|FS grad|: "
+      else "   max|grad|: ",
       sprintf("%.3g", x$max_grad), "\n", sep = "")
   if (!isTRUE(x$convergence) && nzchar(.or_else(x$opt$message, "")))
     cat("  optimiser: ", x$opt$message, "\n", sep = "")
+  ## A repaired data Hessian means the criterion reported above is not the one
+  ## the model posed, and neither are the EDF; see [.psd_repair()].
+  if (isTRUE(x$psd_repairs > 0))
+    cat("  note:      the data Hessian was repaired at ", x$psd_repairs,
+        " iteration", if (x$psd_repairs != 1L) "s",
+        if (isTRUE(x$psd_repaired_at_mode)) ", including the last" else
+          " (but not the last)", "\n", sep = "")
   cat("  observations: ", D$n,
       if (isTRUE(x$dropped > 0)) paste0(" (", x$dropped, " dropped: missing)") else "",
       if (!is.null(x$weights)) ", prior weights" else "", "\n", sep = "")
@@ -24,6 +38,18 @@ print.gamRTMB <- function(x, ...) {
   invisible(x)
 }
 
+#' What to call the reported criterion value
+#'
+#' `"aREML"` optimises the REML criterion -- the approximation is in the
+#' gradient, not in the quantity -- so its value is a REML value and is
+#' directly comparable with one from `method = "REML"`. The header line says
+#' which route produced it, so labelling the number for what it is costs no
+#' ambiguity and gains a comparison.
+#'
+#' @keywords internal
+.criterion_label <- function(method)
+  if (identical(method, "aREML")) "REML" else method
+
 #' Labels for the fixed-effect coefficients
 #'
 #' `"<parameter>:<coefficient>"`, in the order of the `beta` vector.
@@ -36,10 +62,20 @@ print.gamRTMB <- function(x, ...) {
 
 #' Covariance of the fixed-effect coefficients
 #'
-#' The `(beta, beta)` block of the inverse joint precision, so it includes the
-#' uncertainty in the smoothing parameters rather than conditioning on them
-#' (mgcv's `unconditional = TRUE`). Needs a fit made with
-#' `joint_precision = TRUE`, which is the default.
+#' Under `method = "REML"` or `"ML"`, the `(beta, beta)` block of the inverse
+#' joint precision, so it includes the uncertainty in the smoothing parameters
+#' rather than conditioning on them (mgcv's `unconditional = TRUE`). Needs a
+#' fit made with `joint_precision = TRUE`, which is the default.
+#'
+#' \strong{Under `method = "aREML"` it is conditional instead} -- mgcv's
+#' `unconditional = FALSE` -- and so a little too narrow. There is no joint
+#' precision to take a block of: its smoothing-parameter part comes from
+#' differentiating the marginal criterion twice in the smoothing parameters,
+#' which is exactly the term the extended Fellner-Schall method exists to
+#' avoid computing. What that criterion has is the penalized Hessian, and its
+#' inverse is the covariance given the smoothing parameters it settled on.
+#' Everything downstream inherits this: the standard errors in
+#' [summary.gamRTMB()], the bands from [predict.gamRTMB()] and the term plots.
 #'
 #' @param object A `gamRTMB` fit.
 #' @param ... Ignored.
@@ -140,7 +176,7 @@ summary.gamRTMB <- function(object, ...) {
           sep = " ~ "), "")
 
   structure(list(family = object$family, method = object$method,
-                 engine = object$engine, formulas = fml,
+                 formulas = fml,
                  coefficients = cf, smooth = e,
                  n = D$n, dropped = object$dropped,
                  weighted = !is.null(object$weights),
@@ -193,7 +229,8 @@ print.summary.gamRTMB <- function(x, ...) {
         sep = "")
   if (x$weighted) cat("  [prior weights]")
   cat("\n")
-  cat("-", x$method, " = ", sprintf("%.3f", x$objective), sep = "")
+  cat("-", .criterion_label(x$method), " = ", sprintf("%.3f", x$objective),
+      sep = "")
   if (!is.null(x$logLik)) {
     cat("   logLik = ", sprintf("%.3f", as.numeric(x$logLik)), sep = "")
     ## AIC counts the EDF as its parameter count, so it goes when they do

@@ -10,12 +10,13 @@
 \item{fit}{A \code{gamRTMB} fit.}
 }
 \value{
-\code{list(H, i_beta, i_b)}, or \code{NULL} if the engine cannot supply it.
+\code{list(H, i_beta, i_b)}, or \code{NULL} when the fit did not form it.
 }
 \description{
-The engine contract: return the Hessian of the joint penalized negative
-log-likelihood in the coefficients at the fitted mode, plus index vectors
-giving the row of \code{H} for each entry of \code{beta} and of \code{b}. Anything needing
-curvature — \code{\link[=edf]{edf()}}, smooth-term covariances — uses only this.
+The contract each fitting routine fills: return the Hessian of the joint
+penalized negative log-likelihood in the coefficients at the fitted mode,
+plus index vectors giving the row of \code{H} for each entry of \code{beta} and of
+\code{b}. Anything needing curvature — \code{\link[=edf]{edf()}}, smooth-term covariances — uses
+only this.
 }
 \keyword{internal}

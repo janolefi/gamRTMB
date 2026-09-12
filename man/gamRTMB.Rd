@@ -14,8 +14,7 @@ gamRTMB(
   weights = NULL,
   na.action = stats::na.omit,
   knots = NULL,
-  method = c("REML", "ML"),
-  engine = c("laplace", "efs"),
+  method = c("REML", "ML", "aREML"),
   sigma_frac = 0.05,
   sparse = c("auto", "never", "always"),
   joint_precision = TRUE,
@@ -51,9 +50,10 @@ many in the fit's summary.}
 
 \item{knots}{Passed to \code{\link[mgcv:smoothCon]{mgcv::smoothCon()}}.}
 
-\item{method}{\code{"REML"} (default) or \code{"ML"}.}
-
-\item{engine}{Fitting engine; only \code{"laplace"} is implemented.}
+\item{method}{Smoothness selection criterion: \code{"REML"} (default), \code{"ML"},
+or \code{"aREML"} for approximate REML by extended Fellner-Schall. See the
+Smoothness selection section, which says when the third is worth
+reaching for and what it costs.}
 
 \item{sigma_frac}{Tuning constant for the variance-component starting
 values: each smooth starts contributing this fraction of its parameter's
@@ -80,9 +80,29 @@ wanted.}
 \item{start}{Optional named list overriding entries of the starting
 parameter list (\code{beta}, \code{b}, \code{log_sigma}).}
 
-\item{silent}{Passed to \code{\link[RTMB:TMB-interface]{RTMB::MakeADFun()}}.}
+\item{silent}{Under \code{"REML"} and \code{"ML"}, passed to \code{\link[RTMB:TMB-interface]{RTMB::MakeADFun()}}.
+Under \code{"aREML"} there is no such object, so it means the same thing
+directly: \code{silent = FALSE} prints one line per outer iteration -- the
+criterion, its change, the largest Fellner-Schall gradient component, the
+accepted step length and the smoothing parameters on the scale \code{\link[=edf]{edf()}}
+reports -- plus the model's size before the first inner solve and why the
+iteration stopped.
 
-\item{control}{Passed to \code{\link[stats:nlminb]{stats::nlminb()}}.}
+\code{control = list(trace = 2)} adds one line per \emph{inner} Newton step, which
+is what to reach for when a fit is slow: on the harder families the outer
+iterations are not where the time goes, and a single inner solve running
+to its iteration cap looks identical from outside to a fit that has
+hung. \code{control = list(trace = )} overrides \code{silent} either way.}
+
+\item{control}{Under \code{"REML"} and \code{"ML"}, passed to \code{\link[stats:nlminb]{stats::nlminb()}}.
+Under \code{"aREML"}, merged onto \link{.efs_defaults}: \code{maxit}, \code{tol}, \code{gtol},
+\code{max_step}, \code{max_halve}, \code{stall_tol}, \code{trace} (0 silent, 1 outer
+iterations, 2 inner as well), and \code{inner_method}. The last is \code{"bfgs"} by
+default, which is what makes the harder four-parameter families fit at
+all; \code{"newton"} is \code{\link[TMB:newton]{TMB::newton()}}, two to three times faster on terms
+with many coefficients and an ordinary family -- a Markov random field,
+an SPDE mesh -- and not to be used otherwise. See \code{\link[=.efs_inner_bfgs]{.efs_inner_bfgs()}} for
+what was measured.}
 
 \item{inner_control}{Passed to \code{\link[RTMB:TMB-interface]{RTMB::MakeADFun()}}'s \code{inner.control}, which
 governs the inner Newton solve over the coefficients rather than the
@@ -155,24 +175,55 @@ equivalent up to a constant absorbed by the intercept, so such a term needs
 its parameter to have one. See \code{\link[=.null_space]{.null_space()}}.
 }
 
-\section{REML}{
+\section{Smoothness selection}{
 
-With \code{method = "REML"} the mean-structure coefficients join the random
-vector alongside the spline coefficients, so the same Laplace
-approximation integrates out both. This is the bias and stability
-correction of Wood (2011); it is not a sparsity argument, since mgcv's
-bases have global support and are dense either way. ML keeps them as fixed
-effects, which also means \code{\link[=edf]{edf()}} is unavailable.
-}
+Three criteria, and the third is the reason the other two are named rather
+than assumed.
 
-\section{Engines}{
+\code{"REML"} (the default) puts the mean-structure coefficients into the random
+vector alongside the spline coefficients, so the same Laplace approximation
+integrates out both. This is the bias and stability correction of Wood
+(2011); it is not a sparsity argument, since mgcv's bases have global
+support and are dense either way.
 
-\code{engine = "laplace"} hands the smoothing parameters to \code{nlminb} and lets
-RTMB supply the REML criterion and its gradient. \code{engine = "efs"} is
-reserved for an extended Fellner-Schall fit, which would avoid the
-third-derivative term in that gradient at the cost of owning its own inner
-optimisation; it is not implemented, and the seams it needs are documented
-in \code{dev/NOTES-fellner-schall.md}.
+\code{"ML"} keeps them as fixed effects, which also means \code{\link[=edf]{edf()}} is
+unavailable, since the penalized Hessian over every coefficient is not
+formed.
+
+\code{"aREML"} is \strong{approximate REML}: the same criterion as \code{"REML"},
+optimised by the extended Fellner-Schall method of Wood & Fasiolo (2017)
+rather than by handing the smoothing parameters to \code{nlminb}. The two agree
+closely -- over the models in \code{dev/bench-efs.R}, within a few thousandths
+of a nat on the criterion and about a tenth of an effective degree of
+freedom -- and the approximation is in the \emph{gradient}, not the criterion.
+
+The distinction is worth stating because it decides when to reach for it.
+Under \code{"REML"} the outer gradient differentiates \eqn{\log|H|} with respect
+to the smoothing parameters, which needs third derivatives of the
+log-likelihood in the coefficients: the expensive term, in both time and
+tape memory, and the one that requires the inner Hessian to be positive
+definite. Fellner-Schall drops exactly that term and replaces the gradient
+step with a multiplicative update. For the saving to be real nothing may be
+declared random, so \code{"aREML"} owns its own inner solve as well as the outer
+update; see \code{\link[=.fit_efs]{.fit_efs()}}.
+
+\strong{What \code{"aREML"} is for} is models \code{"REML"} cannot fit at all. It never
+needs the inner Hessian to be positive definite -- it repairs the data
+Hessian instead -- and that is where \code{"REML"} fails outright on the harder
+four-parameter families, \code{bcpe} and its relatives. On those it is the only
+one of the three that returns a fit.
+
+It is \emph{not}, at the sizes measured so far, reliably faster on models where
+both work: over eight of them it ranged from 0.5 to 2.4 times \code{"REML"}'s
+time with no clear pattern, because the third-derivative term it avoids is
+not yet the dominant cost on a few hundred observations.
+
+Three things to know before using it. \code{max_grad} is a diagnostic rather
+than a stationarity certificate, since the Fellner-Schall gradient does not
+reach zero at the optimum. The coefficient covariance conditions on the
+fitted smoothing parameters instead of allowing for their uncertainty, so
+standard errors and bands are a little narrow; see \code{\link[=vcov.gamRTMB]{vcov.gamRTMB()}}. And
+\code{sigma_frac}, \code{joint_precision} and \code{inner_control} do not apply.
 }
 
 \section{Supported smooths}{

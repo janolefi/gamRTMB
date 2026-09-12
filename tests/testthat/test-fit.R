@@ -77,12 +77,19 @@ test_that("ML runs but cannot report EDF", {
   expect_error(edf(fit), "REML")
 })
 
-test_that("the efs engine is declared but not implemented", {
-  d <- sim_ls(100)
-  expect_error(gamRTMB(y ~ list(mean = ~ s(x1, k = 5)), 
-                       data = d, engine = "efs"),
-               "not implemented")
+test_that("aREML is a criterion, not a second axis to cross with ML", {
+  ## The interface used to be method x engine, which made an approximate-ML
+  ## fit reachable: approximate twice over, and ten times further from the
+  ## Laplace answer than aREML is from REML. There are three paths, not four.
+  d <- sim_ls(200)
+  expect_error(gamRTMB(y ~ list(mean = ~ s(x1, k = 8)), data = d,
+                       method = "aML"), "arg")
+  expect_false("engine" %in% names(formals(gamRTMB)))
+  fit <- gamRTMB(y ~ list(mean = ~ s(x1, k = 8)), data = d, method = "aREML")
+  expect_true(fit$convergence)
+  expect_true(all(edf(fit)$edf > 1 & edf(fit)$edf < 8))
 })
+
 
 test_that("bad input is caught before fitting", {
   d <- sim_ls(100)

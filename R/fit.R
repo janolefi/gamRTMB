@@ -29,9 +29,18 @@
 #' @param y Response.
 #' @param fx Resolved fixed arguments.
 #' @param w Prior weights, or `NULL` for unweighted.
+#' @param obs Mark the response with [RTMB::OBS()], so that `obj$simulate()`
+#'   and one-step-ahead residuals can substitute for it. Only the Laplace
+#'   engine builds the object those need, and `OBS()` is not free of
+#'   consequences elsewhere: it keys on the *deparsed name* of its argument
+#'   in a registry global to \pkg{RTMB}, which [RTMB::MakeADFun()] resets per
+#'   object but [RTMB::MakeTape()] does not. A tape built the second way
+#'   leaves `"y"` in that registry, and the next model's `OBS(y)` -- on a tape
+#'   or in plain R -- silently gets the previous model's response. So the EFS
+#'   engine, which taping is all it does, asks for `obs = FALSE`.
 #' @return A function of a parameter list `list(beta, b, log_sigma)`.
 #' @keywords internal
-.make_nll <- function(design, family, y, fx = list(), w = NULL) {
+.make_nll <- function(design, family, y, fx = list(), w = NULL, obs = TRUE) {
   parnames  <- design$parnames
   Xfix      <- design$Xfix
   beta_idx  <- design$beta_idx
@@ -44,7 +53,7 @@
 
   function(pv) {
     RTMB::getAll(pv)
-    yo <- RTMB::OBS(y)
+    yo <- if (obs) RTMB::OBS(y) else y
     jnll <- 0
 
     for (k in seq_along(blocks)) {
@@ -217,7 +226,7 @@
 #'
 #' @param obj The `MakeADFun` object, evaluated at its starting values.
 #' @param design The design object.
-#' @param method `"REML"` or `"ML"`.
+#' @param method `"REML"`, `"ML"` or `"aREML"`.
 #' @param famname The family's name, for the message.
 #' @return A sentence describing the negative curvature, or `NULL` if the
 #'   Hessian is unavailable or positive definite.
@@ -342,21 +351,54 @@
 #' equivalent up to a constant absorbed by the intercept, so such a term needs
 #' its parameter to have one. See [.null_space()].
 #'
-#' @section REML:
-#' With `method = "REML"` the mean-structure coefficients join the random
-#' vector alongside the spline coefficients, so the same Laplace
-#' approximation integrates out both. This is the bias and stability
-#' correction of Wood (2011); it is not a sparsity argument, since mgcv's
-#' bases have global support and are dense either way. ML keeps them as fixed
-#' effects, which also means [edf()] is unavailable.
+#' @section Smoothness selection:
+#' Three criteria, and the third is the reason the other two are named rather
+#' than assumed.
 #'
-#' @section Engines:
-#' `engine = "laplace"` hands the smoothing parameters to `nlminb` and lets
-#' RTMB supply the REML criterion and its gradient. `engine = "efs"` is
-#' reserved for an extended Fellner-Schall fit, which would avoid the
-#' third-derivative term in that gradient at the cost of owning its own inner
-#' optimisation; it is not implemented, and the seams it needs are documented
-#' in `dev/NOTES-fellner-schall.md`.
+#' `"REML"` (the default) puts the mean-structure coefficients into the random
+#' vector alongside the spline coefficients, so the same Laplace approximation
+#' integrates out both. This is the bias and stability correction of Wood
+#' (2011); it is not a sparsity argument, since mgcv's bases have global
+#' support and are dense either way.
+#'
+#' `"ML"` keeps them as fixed effects, which also means [edf()] is
+#' unavailable, since the penalized Hessian over every coefficient is not
+#' formed.
+#'
+#' `"aREML"` is **approximate REML**: the same criterion as `"REML"`,
+#' optimised by the extended Fellner-Schall method of Wood & Fasiolo (2017)
+#' rather than by handing the smoothing parameters to `nlminb`. The two agree
+#' closely -- over the models in `dev/bench-efs.R`, within a few thousandths
+#' of a nat on the criterion and about a tenth of an effective degree of
+#' freedom -- and the approximation is in the *gradient*, not the criterion.
+#'
+#' The distinction is worth stating because it decides when to reach for it.
+#' Under `"REML"` the outer gradient differentiates \eqn{\log|H|} with respect
+#' to the smoothing parameters, which needs third derivatives of the
+#' log-likelihood in the coefficients: the expensive term, in both time and
+#' tape memory, and the one that requires the inner Hessian to be positive
+#' definite. Fellner-Schall drops exactly that term and replaces the gradient
+#' step with a multiplicative update. For the saving to be real nothing may be
+#' declared random, so `"aREML"` owns its own inner solve as well as the outer
+#' update; see [.fit_efs()].
+#'
+#' **What `"aREML"` is for** is models `"REML"` cannot fit at all. It never
+#' needs the inner Hessian to be positive definite -- it repairs the data
+#' Hessian instead -- and that is where `"REML"` fails outright on the harder
+#' four-parameter families, `bcpe` and its relatives. On those it is the only
+#' one of the three that returns a fit.
+#'
+#' It is *not*, at the sizes measured so far, reliably faster on models where
+#' both work: over eight of them it ranged from 0.5 to 2.4 times `"REML"`'s
+#' time with no clear pattern, because the third-derivative term it avoids is
+#' not yet the dominant cost on a few hundred observations.
+#'
+#' Three things to know before using it. `max_grad` is a diagnostic rather
+#' than a stationarity certificate, since the Fellner-Schall gradient does not
+#' reach zero at the optimum. The coefficient covariance conditions on the
+#' fitted smoothing parameters instead of allowing for their uncertainty, so
+#' standard errors and bands are a little narrow; see [vcov.gamRTMB()]. And
+#' `sigma_frac`, `joint_precision` and `inner_control` do not apply.
 #'
 #' @section Supported smooths:
 #' `s()`, `t2()`, `by =` variables, `bs = "fs"` and `bs = "re"` all
@@ -379,8 +421,10 @@
 #'   [stats::na.omit()] by default, which drops those rows and reports how
 #'   many in the fit's summary.
 #' @param knots Passed to [mgcv::smoothCon()].
-#' @param method `"REML"` (default) or `"ML"`.
-#' @param engine Fitting engine; only `"laplace"` is implemented.
+#' @param method Smoothness selection criterion: `"REML"` (default), `"ML"`,
+#'   or `"aREML"` for approximate REML by extended Fellner-Schall. See the
+#'   Smoothness selection section, which says when the third is worth
+#'   reaching for and what it costs.
 #' @param sigma_frac Tuning constant for the variance-component starting
 #'   values: each smooth starts contributing this fraction of its parameter's
 #'   linear-predictor scale. See [.init_pars()]. Raise it if a fit converges
@@ -402,8 +446,28 @@
 #'   wanted.
 #' @param start Optional named list overriding entries of the starting
 #'   parameter list (`beta`, `b`, `log_sigma`).
-#' @param silent Passed to [RTMB::MakeADFun()].
-#' @param control Passed to [stats::nlminb()].
+#' @param silent Under `"REML"` and `"ML"`, passed to [RTMB::MakeADFun()].
+#'   Under `"aREML"` there is no such object, so it means the same thing
+#'   directly: `silent = FALSE` prints one line per outer iteration -- the
+#'   criterion, its change, the largest Fellner-Schall gradient component, the
+#'   accepted step length and the smoothing parameters on the scale [edf()]
+#'   reports -- plus the model's size before the first inner solve and why the
+#'   iteration stopped.
+#'
+#'   `control = list(trace = 2)` adds one line per *inner* Newton step, which
+#'   is what to reach for when a fit is slow: on the harder families the outer
+#'   iterations are not where the time goes, and a single inner solve running
+#'   to its iteration cap looks identical from outside to a fit that has
+#'   hung. `control = list(trace = )` overrides `silent` either way.
+#' @param control Under `"REML"` and `"ML"`, passed to [stats::nlminb()].
+#'   Under `"aREML"`, merged onto [.efs_defaults]: `maxit`, `tol`, `gtol`,
+#'   `max_step`, `max_halve`, `stall_tol`, `trace` (0 silent, 1 outer
+#'   iterations, 2 inner as well), and `inner_method`. The last is `"bfgs"` by
+#'   default, which is what makes the harder four-parameter families fit at
+#'   all; `"newton"` is [TMB::newton()], two to three times faster on terms
+#'   with many coefficients and an ordinary family -- a Markov random field,
+#'   an SPDE mesh -- and not to be used otherwise. See [.efs_inner_bfgs()] for
+#'   what was measured.
 #' @param inner_control Passed to [RTMB::MakeADFun()]'s `inner.control`, which
 #'   governs the inner Newton solve over the coefficients rather than the
 #'   outer optimisation of the smoothing parameters. `list(maxit = ...)` is
@@ -424,13 +488,11 @@
 #' @export
 gamRTMB <- function(formula, family = fam("norm"), data = NULL, weights = NULL,
                     na.action = stats::na.omit, knots = NULL,
-                    method = c("REML", "ML"),
-                    engine = c("laplace", "efs"), sigma_frac = 0.05,
+                    method = c("REML", "ML", "aREML"), sigma_frac = 0.05,
                     sparse = c("auto", "never", "always"),
                     joint_precision = TRUE, start = NULL, silent = TRUE,
                     control = list(), inner_control = list()) {
   method <- match.arg(method)
-  engine <- match.arg(engine)
   sparse <- match.arg(sparse)
   if (!inherits(family, "gamRTMB_family"))
     stop("`family` must be a gamRTMB_family, e.g. fam(\"norm\") or ",
@@ -452,7 +514,7 @@ gamRTMB <- function(formula, family = fam("norm"), data = NULL, weights = NULL,
                           knots = knots, sparse = sparse)
   fx <- .resolve_fixed(family, data, length(y))
   pars <- .init_pars(design, family, y, sigma_frac, start)
-  nll <- .make_nll(design, family, y, fx, w)
+  nll <- .make_nll(design, family, y, fx, w, obs = method != "aREML")
 
   ## The ladder needs to be able to rebuild the starting values at another
   ## `sigma_frac`; an explicit `start` is the user's and is never overwritten,
@@ -460,14 +522,17 @@ gamRTMB <- function(formula, family = fam("norm"), data = NULL, weights = NULL,
   repars <- if (is.null(start))
     function(frac) .init_pars(design, family, y, frac, NULL) else NULL
 
-  fit <- switch(engine,
-    laplace = .fit_laplace(nll, pars, design, method, joint_precision, silent,
-                           control, family, inner_control, repars),
-    efs     = .fit_efs(nll, pars, design, method, family))
+  ## The two fitting routines are an implementation detail of `method`: the
+  ## criterion "aREML" is the REML one optimised by extended Fellner-Schall,
+  ## so it is not a separate axis the user has to cross with anything.
+  fit <- if (method == "aREML")
+    .fit_efs(nll, pars, design, family, silent, control)
+  else
+    .fit_laplace(nll, pars, design, method, joint_precision, silent,
+                 control, family, inner_control, repars)
 
   fit$family <- family
   fit$method <- method
-  fit$engine <- engine
   fit$design <- design
   fit$formula <- formula
   fit$par_formulas <- pf$par_formulas
@@ -630,15 +695,3 @@ gamRTMB <- function(formula, family = fam("norm"), data = NULL, weights = NULL,
          tryCatch(max(abs(obj$gr(opt$par))), error = function(e) NA_real_))
 }
 
-#' Extended Fellner-Schall engine (not implemented)
-#'
-#' @keywords internal
-.fit_efs <- function(nll, pars, design, method, family) {
-  stop("engine = \"efs\" is not implemented yet.\n",
-       "It is not an optimiser setting but a separate fit: nothing may be ",
-       "declared random, so the Laplace machinery is never built, and the ",
-       "engine owns both an inner Newton loop over the coefficients and the ",
-       "multiplicative smoothing-parameter update. In this parameterisation ",
-       "that update reduces to lambda_k <- edf_k / sum(b_k^2). ",
-       "See dev/NOTES-fellner-schall.md.", call. = FALSE)
-}

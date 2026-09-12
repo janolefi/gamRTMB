@@ -4,7 +4,7 @@
 \alias{.make_nll}
 \title{Build the joint negative log-likelihood}
 \usage{
-.make_nll(design, family, y, fx = list(), w = NULL)
+.make_nll(design, family, y, fx = list(), w = NULL, obs = TRUE)
 }
 \arguments{
 \item{design}{From \code{\link[=.build_design]{.build_design()}}.}
@@ -16,6 +16,16 @@
 \item{fx}{Resolved fixed arguments.}
 
 \item{w}{Prior weights, or \code{NULL} for unweighted.}
+
+\item{obs}{Mark the response with \code{\link[RTMB:TMB-interface]{RTMB::OBS()}}, so that \code{obj$simulate()}
+and one-step-ahead residuals can substitute for it. Only the Laplace
+engine builds the object those need, and \code{OBS()} is not free of
+consequences elsewhere: it keys on the \emph{deparsed name} of its argument
+in a registry global to \pkg{RTMB}, which \code{\link[RTMB:TMB-interface]{RTMB::MakeADFun()}} resets per
+object but \code{\link[RTMB:Tape]{RTMB::MakeTape()}} does not. A tape built the second way
+leaves \code{"y"} in that registry, and the next model's \code{OBS(y)} -- on a tape
+or in plain R -- silently gets the previous model's response. So the EFS
+engine, which taping is all it does, asks for \code{obs = FALSE}.}
 }
 \value{
 A function of a parameter list \code{list(beta, b, log_sigma)}.
