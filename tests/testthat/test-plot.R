@@ -198,3 +198,35 @@ test_that("the Schur route equals the full inverse when it is well conditioned",
   expect_equal(gamRTMB:::.joint_cov(f)$V, solve(Q)[ic, ic],
                tolerance = 1e-10, ignore_attr = TRUE)
 })
+
+
+## ---------------------------------------------------------------------------
+## A fit whose covariance is unusable
+
+test_that("an unusable joint precision is named, not handed to eigen()", {
+  local_null_device()
+  fit <- fit_two()
+  ## What a fit that stopped short of a mode brings back: `sdreport()` gets
+  ## the smoothing-parameter block by finite-differencing the marginal
+  ## gradient, and where the optimiser gave up that block can come back
+  ## entirely NaN. Substituted here rather than fitted for real, since the
+  ## models that do this take minutes and are not the point.
+  Q <- as.matrix(fit$sdr$jointPrecision)
+  is_ <- which(colnames(Q) == "log_sigma")
+  expect_gt(length(is_), 0L)
+  Q[is_, is_] <- NaN
+  bad <- fit
+  bad$sdr$jointPrecision <- Matrix::Matrix(Q)
+
+  ## the diagonal guard alone used to let this through to eigen(), which
+  ## failed with a message about 'x' that said nothing about the fit
+  expect_error(.joint_cov(bad), "joint precision is not finite")
+  expect_error(.joint_cov(bad), "log_sigma")
+  expect_error(stats::predict(bad, se.fit = TRUE), "not finite")
+
+  ## both plots still draw, saying why the band is missing
+  expect_message(plot(bad, type = "quantile"), "no interval band")
+  expect_message(plot(bad, type = "terms"), "no interval band")
+  ## while the healthy fit needs no such excuse
+  expect_no_message(plot(fit, type = "quantile"))
+})

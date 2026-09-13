@@ -279,6 +279,25 @@ edf.gamRTMB <- function(object, ...) {
   if (is.null(nm)) nm <- names(fit$obj$env$par)
   if (length(nm) != ncol(Q))
     stop("the joint precision does not match the parameter vector")
+  ## A fit that stopped short of a mode can bring back a joint precision that
+  ## is not a number at all. `sdreport()` gets the smoothing-parameter block
+  ## by finite-differencing the marginal gradient, and where the optimiser
+  ## gave up the probe points need not have a finite gradient, so the whole
+  ## block comes back `NaN`. Every use of this matrix is then meaningless,
+  ## and the eigendecomposition below fails with a message about `x` that
+  ## says nothing about the fit. Name the cause instead -- and name it here,
+  ## since the diagonal guard alone would let `NaN` off-diagonals through.
+  if (!all(is.finite(Q))) {
+    bad <- unique(nm[!apply(is.finite(Q), 1L, all)])
+    stop("the coefficient covariance is not available for this fit: its ",
+         "joint precision is not finite (", sum(!is.finite(Q)), " entries, ",
+         "in the ", paste(bad, collapse = " and "), " block",
+         if (length(bad) > 1L) "s" else "", "). This is what a fit that did ",
+         "not converge looks like here -- check `max_grad`, which should be ",
+         "small -- rather than anything about the data. method = \"aREML\" ",
+         "gets a usable covariance from the penalized Hessian instead, and ",
+         "often converges where the Laplace engine does not.", call. = FALSE)
+  }
   ## guard before the square root: at this dynamic range the diagonal itself
   ## can come back negative
   dg <- diag(Q); dg[!is.finite(dg) | dg <= 0] <- 1

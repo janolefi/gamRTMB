@@ -338,9 +338,22 @@ plot.gamRTMB <- function(x, type = c("terms", "qq", "worm", "quantile",
   xv <- x$data[[xvar]]
   nd <- .newdata_along(x, xvar, seq(min(xv), max(xv), length.out = ngrid))
 
+  ## The band is the optional half of this plot, so a fit that cannot supply
+  ## one still gets its quantiles drawn -- the same bargain `.plot_terms()`
+  ## makes. Reported rather than swallowed, since the usual cause is a fit
+  ## that did not converge and the curves are then worth no more than the
+  ## band would have been.
   band <- se && x$family$support == "continuous"
-  qq <- stats::predict(x, newdata = nd, type = "quantile", prob = prob,
-                       se.fit = band)
+  qq <- if (!band) NULL else
+    tryCatch(stats::predict(x, newdata = nd, type = "quantile", prob = prob,
+                            se.fit = TRUE),
+             error = function(e) {
+               message("no interval band: ", conditionMessage(e))
+               NULL
+             })
+  band <- !is.null(qq)
+  if (!band)
+    qq <- stats::predict(x, newdata = nd, type = "quantile", prob = prob)
   Q <- if (band) qq$fit else qq
   S <- if (band) qq$se.fit else NULL
   mid <- which.min(abs(prob - 0.5))
@@ -501,10 +514,14 @@ plot.gamRTMB <- function(x, type = c("terms", "qq", "worm", "quantile",
   tl <- tl[drawable]
   if (!length(tl)) stop("no one-dimensional terms left to plot")
 
-  Vj <- if (se) tryCatch(.joint_cov(x), error = function(e) NULL) else NULL
-  if (se && is.null(Vj))
-    message("no interval band: the joint covariance is unavailable ",
-            "(refit with joint_precision = TRUE)")
+  ## Reporting why, rather than guessing at it: a missing joint precision and
+  ## one that came back full of NaN are different problems with different
+  ## remedies, and [.joint_cov()] already knows which it has.
+  Vj <- if (!se) NULL else
+    tryCatch(.joint_cov(x), error = function(e) {
+      message("no interval band: ", conditionMessage(e))
+      NULL
+    })
 
   ## build every curve first, so a failure cannot leave a half-drawn page
   curves <- lapply(tl, function(t) {
