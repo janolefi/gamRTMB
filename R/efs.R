@@ -41,6 +41,73 @@
   list(S = bl$Smats, A = as.matrix(bl$L))
 }
 
+#' The priors' normalising constant, off the tape
+#'
+#' Everything in the joint objective's prior terms that does not involve a
+#' coefficient:
+#' \deqn{\sum_k \left(\tfrac{q_k}{2}\log 2\pi
+#'        - \tfrac{1}{2}\log|Q_k(\theta)|\right),}
+#' which is \eqn{q_k \theta_k + \tfrac{q_k}{2}\log 2\pi} for an `"iid"`
+#' block, whose precision is \eqn{e^{-2\theta}I}.
+#'
+#' It is a *constant* of the inner problem -- EFS holds \eqn{\theta} fixed
+#' while it solves for the coefficients -- so [.make_nll()] is built with
+#' `prior_const = FALSE` and this is added back as a scalar, once per outer
+#' evaluation rather than once per inner function call. That matters because
+#' \eqn{\log|Q_k|} is a Cholesky factorisation: the penalties a `te()`, a
+#' `ti()` or an adaptive smooth send down the sparse route are sparsely
+#' *stored* but densely *populated*, so the factorisation is cubic in the
+#' block size and, at a few hundred coefficients, is the greater part of the
+#' work in an inner evaluation. Off the tape it is done once per outer
+#' evaluation, where \eqn{\theta} actually moves, and the criterion -- which
+#' does depend on \eqn{\theta} through exactly this term -- is unchanged.
+#'
+#' Adding it back as a scalar rather than dropping it is deliberate. Both
+#' inner solvers measure convergence relative to the objective's value
+#' (`optim`'s `reltol`, `newton`'s `tol`), and `f` feeds `V` and
+#' `penalized_loglik`, so a shifted objective would be a silent change of
+#' behaviour rather than a saving.
+#'
+#' The factorisation is the plain one rather than [.efs_chol()]'s escalating
+#' ridge: a prior precision that will not factor is a broken model, not a
+#' numerical difficulty to be worked around, and [.null_space()] has already
+#' made each \eqn{Q_k} positive definite.
+#'
+#' @param design From [.build_design()].
+#' @param ls Numeric `log_sigma`.
+#' @return A scalar to add to the taped objective.
+#' @keywords internal
+.prior_const <- function(design, ls) {
+  const <- 0
+  for (bl in design$blocks) {
+    th <- ls[bl$theta_idx]
+    const <- const + bl$q * log(2 * pi) / 2 +
+      if (identical(bl$kind, "iid")) bl$q * th[1L]
+      else -.logdet_spd(.sym_sparse(.block_prec(bl, th)), bl$label)
+  }
+  const
+}
+
+#' Half the log determinant of a sparse positive definite matrix
+#'
+#' Half, because every caller wants \eqn{\tfrac{1}{2}\log|Q|}.
+#'
+#' `Matrix::diag()` of a `CHMfactor` is the \eqn{D} of its \eqn{LDL'}, which
+#' for an `LDL = FALSE` factor means the *squared* diagonal of \eqn{L}. So
+#' `sum(log(diag()))` is the whole log determinant and the halving is
+#' explicit, exactly as [.fit_efs()] takes it for \eqn{\log|H|}.
+#'
+#' @keywords internal
+.logdet_spd <- function(Q, label = "a penalized block") {
+  L <- tryCatch(Matrix::Cholesky(Q, LDL = FALSE, perm = TRUE),
+                error = function(e) NULL, warning = function(w) NULL)
+  if (is.null(L))
+    stop("the prior precision for ", sQuote(label), " is not positive ",
+         "definite at these smoothing parameters, so its density has no ",
+         "normalising constant. Report this.", call. = FALSE)
+  sum(log(Matrix::diag(L))) / 2
+}
+
 #' Force a matrix into the symmetric sparse storage the solves want
 #'
 #' `forceSymmetric()` alone returns a `dsy`/`dsC` of whatever storage it was
@@ -663,6 +730,14 @@
   ## mapping them out with `MakeADFun(map = )` would not allow -- so the
   ## objective really is built once.
   ##
+  ## The tape does not *evaluate* those log determinants either. A `DataEval`
+  ## node is re-read on every pass, so everything downstream of it is
+  ## recomputed on every pass, and a prior normalising constant that the inner
+  ## solve sees as a constant would be re-factorised at every one of the
+  ## thousands of function calls an inner solve makes. So the tape is built
+  ## with `prior_const = FALSE` and [.prior_const()] supplies the term once
+  ## per outer step, alongside the theta it belongs to.
+  ##
   ## `MakeTape` rather than `MakeADFun` because a plain tape is all this engine
   ## wants: none of the parameter mapping, reporting or random-effect
   ## apparatus is used, and a tape is what `jacfun()` composes. `force.update()`
@@ -674,6 +749,7 @@
   ## A model with no penalized terms has nothing to move and gets no node.
   tenv <- new.env(parent = emptyenv())
   tenv$theta <- pars$log_sigma
+  tenv$const <- .prior_const(design, pars$log_sigma)
   fc <- if (design$nsigma)
     function(x) nll(list(beta = x[seq_len(nbeta)], b = x[ib],
                          log_sigma = RTMB::DataEval(function() tenv$theta)))
@@ -685,12 +761,18 @@
   Fh <- Fg$jacfun(sparse = TRUE)
   set_theta <- if (design$nsigma) function(th) {
     tenv$theta <- th
+    tenv$const <- .prior_const(design, th)
     Fv$force.update(); Fg$force.update(); Fh$force.update()
     invisible(th)
   } else function(th) invisible(th)
 
   p <- c(pars$beta, pars$b)
-  fn <- function(q) tryCatch(suppressWarnings(Fv(q)),
+  ## `Fv` is the objective without the priors' normalising constant; adding it
+  ## here rather than leaving it out keeps `f` -- and so the inner solvers'
+  ## relative tolerances, the criterion and `penalized_loglik` -- the number it
+  ## has always been. The gradient and Hessian are of the coefficients, which
+  ## the constant does not involve, so those tapes are used as they are.
+  fn <- function(q) tryCatch(suppressWarnings(Fv(q) + tenv$const),
                              error = function(e) NA_real_)
 
   if (!is.finite(fn(p))) {
@@ -871,6 +953,9 @@
     warning("the extended Fellner-Schall iteration did not converge: ", msg,
             ". Treat the smoothing parameters with suspicion.", call. = FALSE)
 
+  ## `tapes$value` is the objective less the priors' normalising constant, and
+  ## `tapes$theta` holds both the smoothing parameters it was last told about
+  ## and the `const` that goes with them.
   list(tapes = list(value = Fv, grad = Fg, hessian = Fh, theta = tenv),
        opt = list(par = rho, objective = cur$V,
                   convergence = if (conv) 0L else 1L,

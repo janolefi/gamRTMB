@@ -29,6 +29,17 @@
 #' @param y Response.
 #' @param fx Resolved fixed arguments.
 #' @param w Prior weights, or `NULL` for unweighted.
+#' @param prior_const Include the priors' normalising constants, which depend
+#'   on `log_sigma` and not on the coefficients. `FALSE` leaves each penalized
+#'   block contributing its quadratic form alone, which is what the EFS engine
+#'   wants: it holds `log_sigma` fixed while it solves the inner problem, so
+#'   the constant is the same number at every inner evaluation and can be
+#'   added back once per outer step instead of being recomputed -- a
+#'   `dgmrf` block's \eqn{\log|Q(\theta)|} is a Cholesky factorisation, and
+#'   on a `te()`-sized dense penalty it is most of the cost of an inner call.
+#'   See [.prior_const()] for the term that is left out, and [.fit_efs()] for
+#'   where it is put back. The Laplace engine differentiates through
+#'   `log_sigma` and needs the whole thing, so `TRUE` is the default.
 #' @param obs Mark the response with [RTMB::OBS()], so that `obj$simulate()`
 #'   and one-step-ahead residuals can substitute for it. Only the Laplace
 #'   engine builds the object those need, and `OBS()` is not free of
@@ -40,7 +51,8 @@
 #'   engine, which taping is all it does, asks for `obs = FALSE`.
 #' @return A function of a parameter list `list(beta, b, log_sigma)`.
 #' @keywords internal
-.make_nll <- function(design, family, y, fx = list(), w = NULL, obs = TRUE) {
+.make_nll <- function(design, family, y, fx = list(), w = NULL, obs = TRUE,
+                      prior_const = TRUE) {
   parnames  <- design$parnames
   Xfix      <- design$Xfix
   beta_idx  <- design$beta_idx
@@ -59,10 +71,18 @@
     for (k in seq_along(blocks)) {
       bl <- blocks[[k]]
       th <- log_sigma[bl$theta_idx]
-      jnll <- jnll - if (identical(bl$kind, "iid"))
-        sum(dnorm(b[bl$idx], 0, exp(th[1L]), log = TRUE))
-      else
-        RTMB::dgmrf(b[bl$idx], 0, .block_prec(bl, th), log = TRUE)
+      bk <- b[bl$idx]
+      ## Without the normalising constant a block contributes its quadratic
+      ## form alone. The rest is [.prior_const()], which the EFS engine adds
+      ## back once per outer step.
+      jnll <- jnll + if (identical(bl$kind, "iid")) {
+        if (prior_const) -sum(dnorm(bk, 0, exp(th[1L]), log = TRUE))
+        else sum(bk * bk) * exp(-2 * th[1L]) / 2
+      } else {
+        Q <- .block_prec(bl, th)
+        if (prior_const) -RTMB::dgmrf(bk, 0, Q, log = TRUE)
+        else sum(bk * as.vector(Q %*% bk)) / 2
+      }
     }
 
     theta <- list()
@@ -609,7 +629,12 @@ gamRTMB <- function(formula, family = fam("norm"), data = NULL, weights = NULL,
                           knots = knots, sparse = sparse)
   fx <- .resolve_fixed(family, data, length(y))
   pars <- .init_pars(design, family, y, sigma_frac, start)
-  nll <- .make_nll(design, family, y, fx, w, obs = method != "aREML")
+  ## The EFS engine holds the smoothing parameters fixed while it solves for
+  ## the coefficients, so the priors' normalising constants are constants of
+  ## its inner problem; it adds them back once per outer step. See
+  ## [.prior_const()].
+  nll <- .make_nll(design, family, y, fx, w, obs = method != "aREML",
+                   prior_const = method != "aREML")
 
   ## The ladder needs to be able to rebuild the starting values at another
   ## `sigma_frac`; an explicit `start` is the user's and is never overwritten,

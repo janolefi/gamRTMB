@@ -51,6 +51,53 @@ test_that(".block_penalties reproduces .block_prec on every kind of block", {
   }
 })
 
+test_that(".prior_const is exactly what the EFS objective leaves out", {
+  ## The EFS engine tapes the objective with `prior_const = FALSE` and adds
+  ## .prior_const() back as a scalar, so that the log determinants in the
+  ## priors are factorised once per outer step rather than at every inner
+  ## function call. The two readings have to add up to the objective the
+  ## Laplace engine gets, or the criterion quietly stops being REML.
+  d <- sim_efs(250)
+  nb <- lattice_nb_efs(6)
+  d2 <- data.frame(reg = factor(rep(names(nb), each = 3), levels = names(nb)))
+  d2$y <- stats::rnorm(nrow(d2))
+
+  cases <- list(
+    ## iid, several blocks, and a parameter with no smooth at all
+    list(f = list(mean = ~ s(x1, k = 8) + s(x2, k = 6), sd = ~ 1), d = d),
+    ## a te(): several penalties on one coefficient vector, sparsely stored
+    ## but densely populated, which is the case the hoist was written for
+    list(f = list(mean = ~ te(x1, x2, k = c(5, 5)), sd = ~ 1), d = d),
+    ## an adaptive smooth, and iid and multi blocks side by side
+    list(f = list(mean = ~ s(x1, k = 20, bs = "ad"), sd = ~ s(x2, k = 6)), d = d),
+    ## a genuinely sparse penalty on the sparse route
+    list(f = list(mean = ~ s(reg, bs = "mrf", xt = list(nb = nb)), sd = ~ 1),
+         d = d2))
+
+  kinds <- character(0)
+  for (cs in cases) {
+    D <- .build_design(cs$f, cs$d, c("mean", "sd"))
+    kinds <- c(kinds, vapply(D$blocks, `[[`, "", "kind"))
+    fm <- fam("norm")
+    y <- cs$d$y
+    fx <- .resolve_fixed(fm, cs$d, length(y))
+    set.seed(4)
+    pv <- list(beta = stats::rnorm(D$nbeta) * 0.3,
+               b = stats::rnorm(D$nb) * 0.3,
+               log_sigma = stats::rnorm(D$nsigma) * 0.5)
+
+    full <- .make_nll(D, fm, y, fx, obs = FALSE, prior_const = TRUE)(pv)
+    part <- .make_nll(D, fm, y, fx, obs = FALSE, prior_const = FALSE)(pv)
+    expect_equal(part + .prior_const(D, pv$log_sigma), full, tolerance = 1e-10)
+
+    ## and the part that was split off really is free of the coefficients
+    pv2 <- pv
+    pv2$b <- pv$b + 1
+    expect_equal(.prior_const(D, pv2$log_sigma), .prior_const(D, pv$log_sigma))
+  }
+  expect_setequal(unique(kinds), c("iid", "multi"))
+})
+
 test_that("a smooth with an L matrix is classified as tied, an ordinary one is not", {
   d <- sim_efs(200)
   D <- .build_design(list(mean = ~ s(x1, k = 8), sd = ~ s(x2, k = 6)), d,

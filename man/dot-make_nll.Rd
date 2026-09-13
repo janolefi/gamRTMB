@@ -4,7 +4,15 @@
 \alias{.make_nll}
 \title{Build the joint negative log-likelihood}
 \usage{
-.make_nll(design, family, y, fx = list(), w = NULL, obs = TRUE)
+.make_nll(
+  design,
+  family,
+  y,
+  fx = list(),
+  w = NULL,
+  obs = TRUE,
+  prior_const = TRUE
+)
 }
 \arguments{
 \item{design}{From \code{\link[=.build_design]{.build_design()}}.}
@@ -26,6 +34,18 @@ object but \code{\link[RTMB:Tape]{RTMB::MakeTape()}} does not. A tape built the 
 leaves \code{"y"} in that registry, and the next model's \code{OBS(y)} -- on a tape
 or in plain R -- silently gets the previous model's response. So the EFS
 engine, which taping is all it does, asks for \code{obs = FALSE}.}
+
+\item{prior_const}{Include the priors' normalising constants, which depend
+on \code{log_sigma} and not on the coefficients. \code{FALSE} leaves each penalized
+block contributing its quadratic form alone, which is what the EFS engine
+wants: it holds \code{log_sigma} fixed while it solves the inner problem, so
+the constant is the same number at every inner evaluation and can be
+added back once per outer step instead of being recomputed -- a
+\code{dgmrf} block's \eqn{\log|Q(\theta)|} is a Cholesky factorisation, and
+on a \code{te()}-sized dense penalty it is most of the cost of an inner call.
+See \code{\link[=.prior_const]{.prior_const()}} for the term that is left out, and \code{\link[=.fit_efs]{.fit_efs()}} for
+where it is put back. The Laplace engine differentiates through
+\code{log_sigma} and needs the whole thing, so \code{TRUE} is the default.}
 }
 \value{
 A function of a parameter list \code{list(beta, b, log_sigma)}.

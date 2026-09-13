@@ -152,6 +152,45 @@ caching discussion in `?Tape` suggests — that only starts after `reorder()`.
 What looks like a stale `DataEval` is usually TMB caching `obj$fn(p)` for a
 repeated `p`. Nudge the parameter vector when testing this.
 
+**And because `DataEval` re-reads on every pass, everything downstream of it
+is recomputed on every pass — including the priors' normalising constants,
+which the inner solve sees as constants.** That is a real cost, not a
+bookkeeping one: `dgmrf`'s `log|Q(theta)|` is a Cholesky factorisation, and
+the penalties a `te()`, a `ti()` or an adaptive smooth send down the sparse
+route are sparsely *stored* but densely *populated*, so it is cubic in the
+block size. Measured on the real objective (600 observations, per tape call,
+with the input nudged so that TMB's cache does not hide it):
+
+```
+                        value call            gradient call
+  te() block   q     with      without      with     without
+       10,10   96   0.68 ms    0.63 ms    1.10 ms   1.07 ms
+       15,15  221   1.90       1.40       2.85      2.35
+       20,20  396   5.11       2.65       6.90      4.40
+       28,28  780  23.4        5.4       26.5       9.0
+```
+
+At 780 coefficients that is 77% of every inner function call spent
+recomputing a number that does not move, and an inner solve makes thousands
+of them: a `te(15,15)` fit at n = 800 made 9632 value and 1726 gradient
+calls across 5 outer iterations.
+
+So `.make_nll(prior_const = FALSE)` leaves each penalized block contributing
+its quadratic form alone, and `.prior_const()` supplies the rest once per
+outer step, where `theta` actually moves. End to end, at n = 600: `te(14,14)`
+27.2s → 22.7s, `te(20,20)` 198.3s → 143.6s, same iteration counts and the
+same criterion to 1e-8.
+
+Two things about the shape of this that are easy to get wrong. The constant
+is **added back as a scalar, not dropped**: both inner solvers measure
+convergence relative to the objective's value (`optim`'s `reltol`, `newton`'s
+`tol`), and `f` feeds `V` and `penalized_loglik`, so dropping it would be a
+silent change of behaviour rather than a saving. And `Matrix::diag()` of a
+`CHMfactor` is the `D` of its `LDL'` — the *squared* diagonal of `L` for an
+`LDL = FALSE` factor — so the halving in `.logdet_spd()` is explicit, exactly
+as `.fit_efs()` already takes it for `log|H|`. `test-efs.R` checks that the
+two halves add back up to the objective the Laplace engine gets.
+
 ## What it is worth: measured
 
 `dev/bench-efs.R`, 500 observations, one run each. `dV` is aREML minus REML on
