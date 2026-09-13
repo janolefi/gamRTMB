@@ -44,34 +44,32 @@ just as much.
 library(gamRTMB)
 data(mcycle, package = "MASS")
 
-fit <- gamRTMB(accel ~ list(mean = ~ s(times, k = 15),
+fit <- gamRTMB(accel ~ list(mean = ~ s(times, bs="ad", k=30, m=4),
                             sd   = ~ s(times, k = 10)),
-               data = mcycle, family = fam("skewnorm2"))
+               data = mcycle, family = fam("norm"))
 summary(fit)
 #> 
-#> Family: skewnorm2   [dskewnorm2 from RTMBdist]
-#> Links:  mean = identity,  sd = log,  alpha = identity
+#> Family: norm   [dnorm from RTMB]
+#> Links:  mean = identity,  sd = log
 #> 
 #> Formula:
-#>    mean ~ s(times, k = 15)
-#>      sd ~ s(times, k = 10)
-#>   alpha ~ 1
+#>   mean ~ s(times, bs = "ad", k = 30, m = 4)
+#>     sd ~ s(times, k = 10)
 #> 
 #> Parametric coefficients:
-#>                    Estimate Std. Error z value Pr(>|z|)    
-#> mean:(Intercept)  -25.10791    1.86401  -13.47   <2e-16 ***
-#> sd:(Intercept)      2.62085    0.06629   39.54   <2e-16 ***
-#> alpha:(Intercept)  -0.85682    1.33923   -0.64    0.522    
+#>                  Estimate Std. Error z value Pr(>|z|)    
+#> mean:(Intercept)  2.92738    9.32615   0.314    0.754    
+#> sd:(Intercept)    2.57879    0.06448  39.994   <2e-16 ***
 #> ---
 #> Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 #> 
 #> Smooth terms:
-#>           term    edf  k        sp
-#>  mean:s(times) 12.159 14 4.684e-06
-#>  sd:s(times)    6.931  9   0.01052
+#>           term    edf  k                                sp
+#>  mean:s(times) 13.992 30 0.05135,1.131e-06,1.131e-06,0.309
+#>  sd:s(times)    7.228  9                          0.008796
 #> 
-#> Total EDF = 22.09   n = 133
-#> -REML = 586.710   logLik = -537.209   AIC = 1118.60
+#> Total EDF = 23.22   n = 133
+#> -REML = 582.263   logLik = -531.697   AIC = 1109.83
 ```
 
 Once every parameter varies, the useful output is covariate-dependent
@@ -116,18 +114,18 @@ range and marginal standard deviation approach their true values as the
 sample grows.
 
 Smooths that penalize one coefficient vector several times over —
-`te()`, `ti()`, `bs = "ad"` — take the sparse route too, and for the same
-reason a Markov random field does: `smooth2random()` needs one variance
-per penalized block and has none to give. What makes that legitimate is
-that the null space of $\sum_i \lambda_i S_i$ is the intersection of
-the individual null spaces and so does not move with $\lambda$, which
-means one corner constraint serves every penalty at once and leaves a
-positive definite precision — so the generalised determinant
-$|S_\lambda|_+$, and its notoriously delicate stable evaluation, never
-has to be computed. EDF agree with `mgcv::gam` to 1e-3 and fitted values
-to 3e-3 on a `te()` over interacting and over additive data, a `ti()`,
-and adaptive smooths on a jump and on `MASS::mcycle`.
+`te()`, `ti()`, `bs = "ad"` — take the sparse route too, and for the
+same reason a Markov random field does: `smooth2random()` needs one
+variance per penalized block and has none to give. What makes that
+legitimate is that the null space of $\sum_i \lambda_i S_i$ is the
+intersection of the individual null spaces and so does not move with
+$\lambda$, which means one corner constraint serves every penalty at
+once and leaves a positive definite precision — so the generalised
+determinant $|S_\lambda|_+$, and its notoriously delicate stable
+evaluation, never has to be computed. EDF agree with `mgcv::gam` to 1e-3
+and fitted values to 3e-3 on a `te()` over interacting and over additive
+data, a `ti()`, and adaptive smooths on a jump and on `MASS::mcycle`.
 
-Not supported: `fx = TRUE`, and smooths whose unpenalized null
-spaces overlap (use a shrinkage basis, `bs = "ts"`). Not yet
-implemented: smooth-term p-values and 2-D smooth plots.
+Not supported: `fx = TRUE`, and smooths whose unpenalized null spaces
+overlap (use a shrinkage basis, `bs = "ts"`). Not yet implemented:
+smooth-term p-values and 2-D smooth plots.

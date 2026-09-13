@@ -53,9 +53,9 @@ mean is famously hard to model — and the variance changes just as much.
 library(gamRTMB)
 data(mcycle, package = "MASS")
 
-fit <- gamRTMB(accel ~ list(mean = ~ s(times, k = 15),
+fit <- gamRTMB(accel ~ list(mean = ~ s(times, bs="ad", k=30, m=4),
                             sd   = ~ s(times, k = 10)),
-               data = mcycle, family = fam("skewnorm2"))
+               data = mcycle, family = fam("norm"))
 summary(fit)
 ```
 
