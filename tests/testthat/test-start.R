@@ -109,15 +109,39 @@ test_that("an explicit start is never overwritten by the ladder", {
 ## ---------------------------------------------------------------------------
 ## EDF at a point the optimiser never reached
 
-test_that("healthy EDF sit inside the [0, 1] the guard checks", {
+test_that("healthy EDF sit inside the [0, k] the guard checks", {
   d <- sim_ls()
   fit <- gamRTMB(y ~ list(mean = ~ s(x1, k = 8), sd = ~ s(x2, k = 8)), data = d)
   ph <- .penalized_hessian(fit)
   e <- 1 - Matrix::diag(Matrix::solve(ph$H,
                                       .penalty_matrix(fit$design, fit$log_sigma, ph)))
+  for (bl in fit$design$blocks) {
+    expect_gte(sum(e[ph$i_b[bl$idx]]), -.edf_tol * bl$q)
+    expect_lte(sum(e[ph$i_b[bl$idx]]), bl$q * (1 + .edf_tol))
+  }
+  ## an `iid` block has a diagonal penalty, so its coefficients are confined
+  ## one by one as well -- which is exactly what a non-diagonal one is not
   expect_gte(min(e), -.edf_tol)
   expect_lte(max(e), 1 + .edf_tol)
   ## and the guard therefore stays out of the way
+  expect_silent(edf(fit))
+})
+
+test_that("a block EDF is confined where its coefficients are not", {
+  set.seed(4); n <- 400
+  d <- data.frame(x = stats::runif(n), z = stats::runif(n))
+  d$y <- stats::rnorm(n, sin(5 * d$x) * cos(4 * d$z), 0.3)
+  fit <- gamRTMB(y ~ list(mean = ~ te(x, z), sd = ~ 1), data = d)
+  ph <- .penalized_hessian(fit)
+  e <- 1 - Matrix::diag(Matrix::solve(ph$H,
+                                      .penalty_matrix(fit$design, fit$log_sigma, ph)))
+  bl <- fit$design$blocks[[1L]]
+  ## the block total is inside [0, q] and is what gets reported ...
+  expect_gte(sum(e[ph$i_b[bl$idx]]), 0)
+  expect_lte(sum(e[ph$i_b[bl$idx]]), bl$q)
+  ## ... while single coefficients are not confined to [0, 1], because the
+  ## penalty is not diagonal and H^-1 S is not symmetric
+  expect_gt(max(e[ph$i_b[bl$idx]]), 1 + .edf_tol)
   expect_silent(edf(fit))
 })
 

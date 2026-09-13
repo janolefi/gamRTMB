@@ -18,11 +18,13 @@ an RTMB tape and on plain numbers.
 }
 \details{
 \code{"iid"} is the \code{\link[mgcv:smooth2random]{mgcv::smooth2random()}} basis, where the penalty is the
-identity. \code{"gmrf"} keeps a fixed sparse precision and scales it. \code{"multi"}
-combines several penalty matrices through mgcv's \code{L} convention,
+identity and no matrix is needed. \code{"multi"} is every other block: it
+combines its penalty matrices through mgcv's \code{L} convention,
 \eqn{\lambda = \exp(L\theta)} and \eqn{Q = \sum_i \lambda_i S_i}, which
 is how a Matern SPDE writes
 \eqn{\tau^2(\kappa^4 C + 2\kappa^2 G_1 + G_2)} with
-\eqn{\theta = (\log\tau, \log\kappa)}.
+\eqn{\theta = (\log\tau, \log\kappa)}, and -- with \code{L} the identity --
+how a \code{te()}, a \code{ti()} or an adaptive smooth carries one free
+\eqn{\log\lambda} per penalty. See \code{\link[=.penalty_spec]{.penalty_spec()}}.
 }
 \keyword{internal}

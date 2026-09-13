@@ -42,7 +42,7 @@ test_that("a corner constraint leaves the penalty sparse and positive definite",
   sm <- mrf_smooth(lattice_nb(8))
   expect_equal(sm$null.space.dim, 1)
   B <- .gmrf_block(sm)
-  Q <- B$spec[[1]]$Q
+  Q <- B$spec[[1]]$Smats[[1]]
   expect_equal(ncol(Q), 63L)                 # one coefficient pinned
   expect_true(is_pd(Q))
   expect_lt(Matrix::nnzero(Q) / length(Q), 0.1)
@@ -58,8 +58,8 @@ test_that("a disconnected graph keeps one free level per extra component", {
   sm <- mrf_smooth(lattice_nb(8, island = TRUE))
   expect_equal(sm$null.space.dim, 2)
   B <- .gmrf_block(sm)
-  expect_equal(ncol(B$spec[[1]]$Q), 62L)          # one per component
-  expect_true(is_pd(B$spec[[1]]$Q))
+  expect_equal(ncol(B$spec[[1]]$Smats[[1]]), 62L)          # one per component
+  expect_true(is_pd(B$spec[[1]]$Smats[[1]]))
   expect_equal(ncol(B$Xf), 1L)               # one contrast between components
 })
 
@@ -74,7 +74,7 @@ test_that("a proper precision is left alone", {
                         data = d, absorb.cons = FALSE)[[1]]
   expect_equal(sm$null.space.dim, 0)
   B <- .gmrf_block(sm)
-  expect_equal(ncol(B$spec[[1]]$Q), 64L)          # nothing dropped
+  expect_equal(ncol(B$spec[[1]]$Smats[[1]]), 64L)          # nothing dropped
   expect_false(B$intrinsic)
   expect_equal(ncol(B$Xf), 0L)
 })
@@ -85,8 +85,8 @@ test_that("the null space is found even when it is not just the constant", {
                         absorb.cons = FALSE)[[1]]
   expect_equal(sm$null.space.dim, 2)         # constant and linear
   B <- .gmrf_block(sm)
-  expect_equal(ncol(B$spec[[1]]$Q), 28L)
-  expect_true(is_pd(B$spec[[1]]$Q))
+  expect_equal(ncol(B$spec[[1]]$Smats[[1]]), 28L)
+  expect_true(is_pd(B$spec[[1]]$Smats[[1]]))
   expect_equal(ncol(B$Xf), 1L)               # linear survives, constant does not
 })
 

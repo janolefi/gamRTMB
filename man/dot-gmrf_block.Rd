@@ -16,16 +16,20 @@ matrix for \code{beta}, and the map back to the smooth's own basis -- so that
 everything downstream is unchanged, plus the pieces the prior needs.
 }
 \details{
+One path, whatever the smooth brought with it. Its penalties are reduced by
+their common null space (\code{\link[=.null_space]{.null_space()}}), which is a no-op for a proper
+precision, a corner constraint for an intrinsic field, and exactly the same
+corner constraint for a \code{te()} or an adaptive smooth -- since \eqn{S_iN = 0}
+holds for every penalty at once, one reduction serves all of them.
+
 Null-space columns whose contribution the parameter's intercept already
 covers are left out, which is what the sum-to-zero constraint achieves on
 the other route. A pivoted QR of \verb{cbind(1, X N)} finds them: for a
 connected Markov random field the whole null space is the constant, so no
 free column survives and the intercept carries the level; for a field with
 an island, one contrast between the two components survives, which is
-right, because their levels really are separately free.
-
-A smooth with an \code{L} matrix keeps all of its penalty matrices and gets
-\code{ncol(L)} parameters instead of one. Its penalty is assumed proper -- an
-SPDE precision is, for any positive range -- so no constraint arises.
+right, because their levels really are separately free; and for a \code{te()}
+the main effects survive and the constant does not, which is mgcv's own
+account of a tensor product's null space.
 }
 \keyword{internal}

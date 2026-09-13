@@ -4,12 +4,15 @@
 \alias{.null_space}
 \title{The null space of a penalty, and which coefficients to drop for it}
 \usage{
-.null_space(S, k)
+.null_space(S, k, label = "this smooth")
 }
 \arguments{
-\item{S}{The penalty matrix.}
+\item{S}{A list of penalty matrices, all \code{q} by \code{q}.}
 
-\item{k}{Dimension of its null space, from \code{smoothCon}'s \code{null.space.dim}.}
+\item{k}{Dimension of their common null space, from \code{smoothCon}'s
+\code{null.space.dim}.}
+
+\item{label}{The smooth's label, for error messages.}
 }
 \value{
 \code{list(N, drop)}: a \code{q} by \code{k} null-space basis, and the \code{k} indices
@@ -44,19 +47,66 @@ A proper penalty has no null space and gets no constraint: the prior itself
 identifies every direction. That is the case a Matern/SPDE precision lands
 in.
 }
-\section{Finding the null space}{
+\section{Several penalties at once}{
 
-\code{k} comes from \code{mgcv}, which knows it by construction. Only a basis has to
-be found here, and there is one case worth doing cheaply, because it is
-every \code{bs = "mrf"} and every first-order random walk: when the penalty's
-rows sum to zero the constant lies in the null space, and if the graph then
-has exactly \code{k} connected components their indicators \emph{are} the null space.
-Reading those off the sparsity pattern costs a traversal where an
-eigendecomposition would cost \code{q^3}. When the counts disagree -- a second
-difference penalty has a linear null direction as well as a constant one --
-the general route is taken instead. A Cholesky cannot stand in for this
-test: CHOLMOD and \code{chol()} both factor a penalty whose smallest eigenvalue
-is -8e-18 without complaint.
+Everything above survives the step to a \code{te()}, a \code{ti()} or an adaptive
+smooth unchanged, and one fact is why. For \eqn{\lambda_i > 0} and
+\eqn{S_i \succeq 0},
+\deqn{v'S_\lambda v = 0 \iff S_i v = 0 \ \forall i,}
+so the null space of \eqn{S_\lambda = \sum_i \lambda_i S_i} is the
+\emph{intersection} of the individual null spaces and \strong{does not depend on
+\eqn{\lambda}}. It is a structural constant, and mgcv already knows it as
+\code{null.space.dim}.
+
+That matters twice over. The columns of \code{N} lie in every \eqn{null(S_i)},
+so \eqn{S_i N = 0} holds for each penalty separately and one
+reparameterisation serves all of them at once. And \eqn{Q(\lambda) =
+S_\lambda[keep, keep]} is positive definite for every positive
+\eqn{\lambda}: if \eqn{\tilde v} (padded with zeros on \code{drop}) has
+\eqn{\tilde v'S_\lambda\tilde v = 0} then \eqn{\tilde v = Nc}, and
+vanishing on \code{drop} forces \eqn{N_{drop}c = 0} and so \eqn{c = 0}.
+
+So \code{\link[RTMB:MVgauss]{RTMB::dgmrf()}} is handed an honestly positive definite matrix and its
+Cholesky log determinant is the quantity wanted: with \eqn{T = [P\ N]},
+\deqn{\log\det Q(\lambda) = \log|S_\lambda|_+ + 2\log|\det T|,}
+and the second term depends on \code{N} alone, not on \eqn{\lambda}. The
+generalised determinant and its notoriously delicate stable evaluation
+(Wood, 2011, Appendix B) never have to be computed.
 }
 
+\section{Finding the null space}{
+
+\code{k} comes from \code{mgcv}, which knows it by construction, and is taken as
+authoritative -- a numerical rank test is exactly what this is avoiding.
+Only a basis has to be found, and there is one case worth doing cheaply,
+because it is every \code{bs = "mrf"} and every first-order random walk: when
+the penalty's rows sum to zero the constant lies in the null space, and if
+the graph then has exactly \code{k} connected components their indicators \emph{are}
+the null space. Reading those off the sparsity pattern costs a traversal
+where an eigendecomposition would cost \code{q^3}. When the counts disagree -- a
+second difference penalty has a linear null direction as well as a constant
+one -- the general route is taken instead. A Cholesky cannot stand in for
+this test: CHOLMOD and \code{chol()} both factor a penalty whose smallest
+eigenvalue is -8e-18 without complaint.
+
+With several penalties the sum they are searched in is \strong{balanced},
+\eqn{\sum_i S_i/\|S_i\|_F}, rather than taken at \eqn{\lambda = 1}. Any
+positive weights give the same null space in exact arithmetic; balanced
+ones give it in floating point too, since a penalty allowed to dominate
+rounds the others' null directions away. It is also the only scaling at
+which a fixed relative tolerance means the same thing for every term.
+
+The eigenvalue either side of the cut is then checked rather than assumed.
+The gap is wide when the structure is what mgcv says it is -- 2.3e-4
+against 4.9e-17 for a \code{te()}, 3.6e-5 against 3.3e-17 for an adaptive
+smooth -- so a narrow one means the penalties are not the ones this
+reduction was derived for, and saying so beats silently fitting a different
+model.
+}
+
+\references{
+Wood, S. N. (2011). Fast stable restricted maximum likelihood and marginal
+likelihood estimation of semiparametric generalized linear models.
+\emph{JRSS-B} 73, 3-36.
+}
 \keyword{internal}

@@ -23,8 +23,8 @@ they expect. The two must agree; \code{test-efs.R} checks that they do.
 }
 \details{
 The \code{A} matrix is mgcv's \code{L} convention generalised to every block:
-\verb{\eqn{\lambda = \exp(L\theta)}}. An \code{"iid"} or \code{"gmrf"} block has one
-penalty matrix and one parameter, the log standard deviation, so
-\eqn{\lambda = \exp(-2\theta)} and \code{A} is the 1 by 1 matrix \code{-2}.
+\verb{\eqn{\lambda = \exp(L\theta)}}. A \code{"multi"} block carries it as \code{L}; an
+\code{"iid"} block has no penalty matrix stored at all, its penalty being the
+identity, so both are supplied here.
 }
 \keyword{internal}

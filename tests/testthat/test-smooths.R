@@ -52,9 +52,13 @@ test_that("ids are resolved across distributional parameters", {
 
 test_that("unsupported smooths are refused", {
   set.seed(1); d <- data.frame(x = runif(100), z = runif(100))
-  expect_error(gamRTMB:::.build_design(list(mu = ~ mgcv::te(x, z, k = 3)), d, "mu"))
   expect_error(gamRTMB:::.build_design(list(mu = ~ s(x, k = 5, fx = TRUE)), d, "mu"),
                "fx = TRUE")
+  ## a smooth that penalises one coefficient vector several times over has no
+  ## smooth2random representation, so sparse = "never" leaves it nowhere to go
+  for (rhs in list(~ te(x, z, k = 3), ~ ti(x, z, k = 3), ~ s(x, bs = "ad", k = 15)))
+    expect_error(gamRTMB:::.build_design(list(mu = rhs), d, "mu", sparse = "never"),
+                 "several times over")
 })
 
 test_that("overlapping null spaces are rejected with the remedy named", {

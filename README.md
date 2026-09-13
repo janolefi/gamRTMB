@@ -92,7 +92,7 @@ else are in `vignette("gamRTMB")`.
 |----|----|
 | Families | 85, from RTMBdist plus the standard R densities; `families()` lists them, `fam()` builds one |
 | Formula | `y ~ list(mean = ~ s(x), sd = ~ s(z))`, one one-sided formula per parameter, missing ones get `~1` |
-| Smooths | `s()`, `t2()`, `by=`, `bs="fs"`, `bs="re"`, shrinkage bases, and `id=` to share smoothing parameters |
+| Smooths | `s()`, `te()`, `ti()`, `t2()`, `by=`, `bs="fs"`, `bs="re"`, `bs="ad"`, shrinkage bases, and `id=` to share smoothing parameters |
 | Spatial | `bs="mrf"` Markov random fields over an adjacency graph, or any precision matrix via `xt=list(penalty=)`; `bs="spde"` Matern fields on an [fmesher](https://cran.r-project.org/package=fmesher) mesh. Both kept sparse, so a few thousand regions or mesh nodes is routine |
 | Criterion | `REML` by default (coefficients integrated out by the same Laplace approximation), `ML`, or `aREML` — the REML criterion optimised by extended Fellner–Schall, which fits four-parameter families the other two cannot start |
 | Inference | `summary()`, `vcov()`, `edf()`, `AIC()`/`BIC()`, `predict()` with standard errors |
@@ -115,7 +115,19 @@ $\tau^2(\kappa^4 C + 2\kappa^2 G_1 + G_2)$ to 5e-16, and the fitted
 range and marginal standard deviation approach their true values as the
 sample grows.
 
-Not supported: `te()` (mgcv itself declines `smooth2random(type = 2)`
-for it — use `t2()`), `fx = TRUE`, and smooths whose unpenalized null
+Smooths that penalize one coefficient vector several times over —
+`te()`, `ti()`, `bs = "ad"` — take the sparse route too, and for the same
+reason a Markov random field does: `smooth2random()` needs one variance
+per penalized block and has none to give. What makes that legitimate is
+that the null space of $\sum_i \lambda_i S_i$ is the intersection of
+the individual null spaces and so does not move with $\lambda$, which
+means one corner constraint serves every penalty at once and leaves a
+positive definite precision — so the generalised determinant
+$|S_\lambda|_+$, and its notoriously delicate stable evaluation, never
+has to be computed. EDF agree with `mgcv::gam` to 1e-3 and fitted values
+to 3e-3 on a `te()` over interacting and over additive data, a `ti()`,
+and adaptive smooths on a jump and on `MASS::mcycle`.
+
+Not supported: `fx = TRUE`, and smooths whose unpenalized null
 spaces overlap (use a shrinkage basis, `bs = "ts"`). Not yet
 implemented: smooth-term p-values and 2-D smooth plots.

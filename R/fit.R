@@ -126,14 +126,109 @@
   ls0 <- as.numeric(unlist(lapply(design$blocks, function(bl) {
     rs <- sqrt(mean(Matrix::rowSums(bl$X^2)))
     s1 <- log(max(frac * sc[[bl$par]] * bl$qscale / max(rs, 1e-8), 1e-4))
-    ## A block with its own parameterisation is not a variance, so the rule
-    ## above does not apply to it. Its constructor supplies the start.
-    if (bl$ntheta == 1L) s1 else bl$theta_start
+    ## `s1` is a log standard deviation, and scaling a block's whole penalty
+    ## by sigma^-2 shifts theta by -2/sp_pow -- +1 where theta is itself a log
+    ## standard deviation, -2 where it is a log penalty weight. So one rule
+    ## covers both. A block whose penalty weights are not one-to-one with its
+    ## parameters has no such sigma to scale by, and its constructor supplies
+    ## an absolute start instead; see [.penalty_spec()].
+    if (is.null(bl$sp_pow)) bl$theta_start else
+      bl$theta_start + s1 * (-2 / bl$sp_pow)
   })))
   pars <- list(beta = beta0, b = numeric(design$nb),
                log_sigma = stats::ave(ls0, design$sig_group))
   if (!is.null(start)) pars[names(start)] <- start
   pars
+}
+
+#' How far a penalty weight may travel from its starting value
+#'
+#' In log units, either way. See [.theta_bounds()].
+#'
+#' @format A single number.
+#' @keywords internal
+.theta_halfwidth <- 12
+
+#' Keep a smooth's penalty weights inside the range they can be added up over
+#'
+#' A smooth with several penalties has two directions the criterion is flat
+#' along, and the arithmetic runs out before the flatness does.
+#'
+#' Downward: once \eqn{\lambda_i} is small enough that \eqn{\lambda_iS_i} is
+#' lost against the rest of \eqn{\sum_j\lambda_jS_j}, nothing about the model
+#' changes as it falls further, and the outer gradient in that parameter is
+#' not merely small but exactly zero. `nlminb` then walks the ray until it
+#' runs out of iterations: on the `MASS::mcycle` adaptive smooth one weight
+#' reaches \eqn{\log\lambda = -466}, and the fit -- otherwise excellent,
+#' agreeing with mgcv to 1e-3 on the EDF -- is reported as having failed to
+#' converge, with a smoothing parameter of 3e-203 in the summary.
+#'
+#' Upward is worse, because it is not flat but falsely *downhill*.
+#' \eqn{Q = \sum_i\lambda_iS_i} is formed in double precision, so a
+#' subdominant penalty's contribution in the directions where the dominant one
+#' is null is held with an absolute error set by the dominant one. Nothing
+#' downstream recovers it -- the loss happens at the summation, before any
+#' factorisation, so pivoting, scaling and `Cholesky` all inherit it. Measured
+#' on a `te()` fitted to additive data, where one margin is driven flat,
+#' against a dense reference taken at the structurally correct rank:
+#'
+#' ```
+#'   spread   error in log|Q|   drift in -REML
+#'    1e8.5           1.5e-06          0          <- true plateau, reached here
+#'    1e10.9          2.5e-03         -0.0005
+#'    1e12.2          3.3e-02         -0.014
+#'    1e13.5              ---         -0.84
+#'    1e14.8              ---         -4.7
+#'    1e16                ---          NaN
+#' ```
+#'
+#' Wood (2011, Appendix B) is the way to compute \eqn{\log|S_\lambda|_+}
+#' without ever forming that sum. This is the cheaper way: stay where forming
+#' it is safe.
+#'
+#' @section Sizing the box:
+#' Every weight in a block starts at the same value ([.init_pars()] gives the
+#' block one \eqn{\sigma}), so a box of half-width `h` either side of the
+#' start caps the *spread* at `2h` as well as the travel at `h`. Both ends are
+#' measured. Against `mgcv::gam` over a `te()` on interacting and on additive
+#' data, a `ti()`, and adaptive smooths on a jump and on `MASS::mcycle`, the
+#' largest move either package makes on a weight the two *agree* about is
+#' 10.7; the moves beyond that are all on weights they disagree about, where
+#' the criterion is flat to 1e-5 and the disagreement is a factor of two in a
+#' \eqn{\lambda} that has stopped mattering. At `h = 12` the box clears the
+#' largest real move and caps the spread at 1e10.4 -- the end of the clean
+#' region in the table above.
+#'
+#' @section What is not boxed:
+#' Only blocks whose penalty weights are free coordinates, which is what
+#' `sp_pow` records. An SPDE's three weights are tied through two parameters
+#' with a physical meaning and cannot drift apart on their own. A block with
+#' one penalty has no spread at all, and \eqn{\lambda \to 0} and
+#' \eqn{\lambda \to \infty} are its unpenalized and null-space fits: the
+#' criterion keeps changing all the way, and the optimiser should be free to
+#' go there.
+#'
+#' @param design From [.build_design()].
+#' @param log_sigma The starting parameter vector, full length.
+#' @return `list(lower, upper)`, each as long as the *free* parameter vector
+#'   the optimiser sees, with infinities where nothing is imposed.
+#' @references
+#' Wood, S. N. (2011). Fast stable restricted maximum likelihood and marginal
+#' likelihood estimation of semiparametric generalized linear models.
+#' \emph{JRSS-B} 73, 3-36.
+#' @keywords internal
+.theta_bounds <- function(design, log_sigma) {
+  lo <- rep(-Inf, design$nsigma); hi <- rep(Inf, design$nsigma)
+  for (bl in design$blocks)
+    if (bl$ntheta > 1L && !is.null(bl$sp_pow)) {
+      lo[bl$theta_idx] <- log_sigma[bl$theta_idx] - .theta_halfwidth
+      hi[bl$theta_idx] <- log_sigma[bl$theta_idx] + .theta_halfwidth
+    }
+  ## An `id` makes one estimated value of several entries, so it inherits the
+  ## tightest box any of them asked for.
+  g <- as.integer(design$sig_group)
+  list(lower = as.numeric(vapply(split(lo, g), max, numeric(1))),
+       upper = as.numeric(vapply(split(hi, g), min, numeric(1))))
 }
 
 #' Fallback variance-component starts
@@ -586,18 +681,22 @@ gamRTMB <- function(formula, family = fam("norm"), data = NULL, weights = NULL,
   build <- function(p) RTMB::MakeADFun(nll, p, random = random, map = map,
                                        silent = silent, inner.control = ic)
   obj <- build(pars)
+  used <- pars              # the start the bounds below are measured from
 
   ## Walk the ladder only if the first start does not work. The probe is
   ## skipped when there is nothing to walk to, so a fit with `repars = NULL`
   ## or an explicit `start` behaves exactly as it did before.
   if (!is.null(repars) && !.probe_finite(obj)) {
     for (fr in .sigma_frac_ladder) {
-      cand <- tryCatch(build(repars(fr)), error = function(e) NULL)
+      cp <- tryCatch(repars(fr), error = function(e) NULL)
+      cand <- if (is.null(cp)) NULL else
+        tryCatch(build(cp), error = function(e) NULL)
       if (is.null(cand) || !.probe_finite(cand)) next
       message("the marginal objective was not finite at the default ",
               "variance-component start; refitting with sigma_frac = ", fr,
               ". Pass sigma_frac explicitly to pin this down.")
       obj <- cand
+      used <- cp
       attr(obj, "sigma_frac") <- fr
       break
     }
@@ -658,12 +757,14 @@ gamRTMB <- function(formula, family = fam("norm"), data = NULL, weights = NULL,
   ## family's own derivatives break down, and it can happen after real
   ## progress has been made. TMB has kept the best point it saw, so the fit is
   ## returned from there and flagged as unconverged, rather than thrown away.
+  bnd <- .theta_bounds(design, used$log_sigma)
   opt <- if (!length(obj$par))
     list(par = obj$par, objective = obj$fn(obj$par), convergence = 0L,
          message = "no smoothing parameters to estimate")
   else tryCatch(
     withCallingHandlers(
-      stats::nlminb(obj$par, obj$fn, obj$gr, control = ctl),
+      stats::nlminb(obj$par, obj$fn, obj$gr, control = ctl,
+                    lower = bnd$lower, upper = bnd$upper),
       warning = function(w) {
         if (grepl("NA/NaN function evaluation", conditionMessage(w)))
           invokeRestart("muffleWarning")

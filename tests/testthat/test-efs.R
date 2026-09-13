@@ -38,7 +38,7 @@ test_that(".block_penalties reproduces .block_prec on every kind of block", {
     .build_design(list(mean = ~ s(x1, k = 8), sd = ~ 1), d, c("mean", "sd"))$blocks,
     .build_design(list(mean = ~ s(reg, bs = "mrf", xt = list(nb = nb)), sd = ~ 1),
                   d2, c("mean", "sd"))$blocks)
-  expect_setequal(unique(vapply(blocks, `[[`, "", "kind")), c("iid", "gmrf"))
+  expect_setequal(unique(vapply(blocks, `[[`, "", "kind")), c("iid", "multi"))
 
   for (bl in blocks) {
     th <- seq(-0.7, 0.4, length.out = bl$ntheta)
@@ -108,7 +108,10 @@ test_that("aREML handles a sparse GMRF block, which needs the general trace", {
   f <- y ~ list(mean = ~ s(reg, bs = "mrf", xt = list(nb = nb)), sd = ~ 1)
   a <- gamRTMB(f, data = d)
   b <- gamRTMB(f, data = d, method = "aREML")
-  expect_equal(b$design$blocks[[1]]$kind, "gmrf")
+  expect_equal(b$design$blocks[[1]]$kind, "multi")
+  ## a lone sparse penalty is that block with L = [-2] and one matrix
+  expect_equal(b$design$blocks[[1]]$L, matrix(-2, 1L, 1L))
+  expect_length(b$design$blocks[[1]]$Smats, 1L)
   expect_true(b$convergence)
   expect_equal(b$objective, a$objective, tolerance = 1e-3)
   expect_equal(edf(b)$edf, edf(a)$edf, tolerance = 0.5)

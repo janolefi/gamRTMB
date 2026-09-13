@@ -12,19 +12,31 @@
 \item{mode}{\code{"auto"}, \code{"always"} or \code{"never"}.}
 }
 \description{
-Two ways to qualify. A smooth with a single penalty qualifies if that
-penalty is big and sparse enough that \code{smooth2random}'s rotation would
-actually cost something -- a 10-coefficient P-spline penalty is technically
-banded, but nothing is gained by treating it specially and the
-well-travelled route is the safer one.
+Three ways to qualify, two of them outright.
 }
 \details{
-A smooth carrying an \code{L} matrix qualifies outright, whatever its size. \code{L}
-is mgcv's way of saying that several penalty matrices combine into one
-through fewer smoothing parameters than there are matrices, as
+A smooth carrying an \code{L} matrix qualifies whatever its size. \code{L} is mgcv's
+way of saying that several penalty matrices combine into one through fewer
+smoothing parameters than there are matrices, as
 \eqn{\lambda = \exp(L\theta)}. \code{smooth2random} cannot represent that at
 all -- it needs one variance per penalized block -- so such a smooth has
 nowhere else to go. The SPDE smooth is the case in hand: three finite
 element matrices, two parameters.
+
+A smooth with several penalty matrices whose supports \emph{overlap} qualifies
+for the same reason, and overlap is the whole of the test. \code{t2()} also has
+several penalties, but by construction each acts on its own disjoint set of
+coefficients, which is exactly what lets \code{smooth2random} split it into one
+iid block per penalty -- so \code{t2()} keeps the well-travelled route. A
+\code{te()}, a \code{ti()} and an adaptive smooth all penalise the same coefficients
+several times over and cannot be split, which is why mgcv itself declines
+them (\emph{"te smooths not useable with gamm4"}, \emph{"Can not convert this smooth
+class to a random effect"}).
+
+A smooth with a single penalty is the discretionary case: it qualifies if
+that penalty is big and sparse enough that \code{smooth2random}'s rotation would
+actually cost something -- a 10-coefficient P-spline penalty is technically
+banded, but nothing is gained by treating it specially and the
+well-travelled route is the safer one.
 }
 \keyword{internal}

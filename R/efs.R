@@ -27,20 +27,18 @@
 #' they expect. The two must agree; `test-efs.R` checks that they do.
 #'
 #' The `A` matrix is mgcv's `L` convention generalised to every block:
-#' `\eqn{\lambda = \exp(L\theta)}`. An `"iid"` or `"gmrf"` block has one
-#' penalty matrix and one parameter, the log standard deviation, so
-#' \eqn{\lambda = \exp(-2\theta)} and `A` is the 1 by 1 matrix `-2`.
+#' `\eqn{\lambda = \exp(L\theta)}`. A `"multi"` block carries it as `L`; an
+#' `"iid"` block has no penalty matrix stored at all, its penalty being the
+#' identity, so both are supplied here.
 #'
 #' @param bl A block from [.build_design()].
 #' @return `list(S, A)`: a list of `nS` sparse penalty matrices, and an `nS`
 #'   by `bl$ntheta` matrix of exponent coefficients.
 #' @keywords internal
 .block_penalties <- function(bl) {
-  switch(bl$kind,
-    iid   = list(S = list(.sparse_I(bl$q)), A = matrix(-2, 1L, 1L)),
-    gmrf  = list(S = list(bl$Q), A = matrix(-2, 1L, 1L)),
-    multi = list(S = bl$Smats, A = as.matrix(bl$L)),
-    stop("unknown block kind ", sQuote(bl$kind)))
+  if (identical(bl$kind, "iid"))
+    return(list(S = list(.sparse_I(bl$q)), A = matrix(-2, 1L, 1L)))
+  list(S = bl$Smats, A = as.matrix(bl$L))
 }
 
 #' Force a matrix into the symmetric sparse storage the solves want
@@ -133,8 +131,8 @@
 #' and does rescue \eqn{H}'s definiteness while leaving \eqn{H - S}
 #' indefinite, and it is \eqn{H - S} that Wood & Fasiolo's Theorem 1 needs:
 #' without it the multiplicative update is not guaranteed to increase the
-#' criterion, and the effective degrees of freedom are not in \eqn{[0, 1]}
-#' either (see [edf()]).
+#' criterion, and a block's effective degrees of freedom are not in
+#' \eqn{[0, q_k]} either (see [edf()]).
 #'
 #' Positive *semi*-definite is the question, since a data Hessian is
 #' routinely singular -- a coefficient the data say nothing about -- and that
@@ -389,15 +387,19 @@
   ## tied parameter and a free one on the same penalty matrix.
   tied <- logical(nfree)
   if (nrow(Jac)) {
-    ## A penalty matrix whose weight is its block's whole penalty, and which
-    ## no other free parameter touches, can be moved on its own.
-    alone  <- rowSums(Jac != 0) == 1L
-    single <- vapply(pairs, function(z) z$nS == 1L, NA)
+    ## A penalty weight no other free parameter touches, whose parameter
+    ## enters it with a single exponent, can be moved on its own -- which is
+    ## all Wood & Fasiolo's multiplicative update needs. Sharing a *block*
+    ## with other penalty matrices does not tie it: a `te()`, a `ti()` and an
+    ## adaptive smooth all have `L = I`, so their weights really are free
+    ## coordinates and the exact update applies to each. What ties a parameter
+    ## is an `L` that is not diagonal, as an SPDE's is, where one weight is a
+    ## function of several parameters at once.
+    alone <- rowSums(Jac != 0) == 1L
     for (l in seq_len(nfree)) {
       ii <- which(Jac[, l] != 0)
       if (!length(ii)) next
-      tied[l] <- !(all(single[ii]) && all(alone[ii]) &&
-                   all(Jac[ii, l] == Jac[ii[1L], l]))
+      tied[l] <- !(all(alone[ii]) && all(Jac[ii, l] == Jac[ii[1L], l]))
     }
     ## and tying spreads along shared penalty matrices
     while (any(tied)) {
@@ -484,10 +486,16 @@
     r <- rows[[k]]
     E <- Matrix::sparseMatrix(i = r, j = seq_along(r), x = 1,
                               dims = c(np, length(r)))
-    Vk[[k]] <- as.matrix(Matrix::solve(fac, E, system = "A"))[r, , drop = FALSE]
+    ## Subset before densifying: only the q_k by q_k diagonal block is
+    ## wanted, and `as.matrix` on the whole solve would hold np by q_k.
+    Vk[[k]] <- as.matrix(Matrix::solve(fac, E, system = "A")[r, , drop = FALSE])
     ## Only a block that combines several penalty matrices needs its own
     ## precision: with one, tr(Q^-1 lambda S) is q_k and no solve arises.
-    if (pmap$multi[k]) Qk[[k]] <- .block_prec(bl, theta[bl$theta_idx])
+    ## One inverse serves all of that block's penalties, and each trace then
+    ## runs over its own nonzeros through [.tr_VS()], as the H side already
+    ## does -- twice the speed of a fresh solve per penalty matrix.
+    if (pmap$multi[k])
+      Qk[[k]] <- as.matrix(Matrix::solve(.block_prec(bl, theta[bl$theta_idx])))
   }
 
   lam <- as.vector(exp(pmap$Jac %*% rho))
@@ -496,8 +504,7 @@
     bl <- design$blocks[[pr$block]]
     den[r] <- lam[r] * .quad_S(bcoef[bl$idx], pr$S)
     tr_Q <- if (pr$nS == 1L) bl$q else
-      lam[r] * sum(Matrix::diag(Matrix::solve(Qk[[pr$block]],
-                                              as(pr$S, "generalMatrix"))))
+      lam[r] * .tr_VS(Qk[[pr$block]], pr$tri)
     num[r] <- tr_Q - lam[r] * .tr_VS(Vk[[pr$block]], pr$tri)
   }
 
@@ -523,29 +530,34 @@
 
 #' The free smoothing parameters on the scale [edf()] reports them
 #'
-#' So that a progress line and the fitted summary show the same numbers. A
-#' block parameterised by a log standard deviation reports
-#' \eqn{\lambda = \sigma^{-2}}; one with its own parameterisation -- an SPDE's
-#' range, say -- reports \eqn{\exp(\theta)}, since there is no single variance
-#' to invert. Which of the two a free parameter gets is fixed by the design,
-#' so it is worked out once and reused.
+#' So that a progress line and the fitted summary show the same numbers. Both
+#' read the same field: `sp_pow` is the exponent with which a parameter enters
+#' its own penalty weight, \eqn{\lambda = \exp(sp\_pow \cdot \theta)} --
+#' \eqn{-2} for a log standard deviation, \eqn{1} for a log penalty weight.
+#' Where the map from parameters to weights is not one-to-one, as an SPDE's is
+#' not, there is no \eqn{\lambda} belonging to a single parameter and the
+#' parameter itself is reported instead, which `sp_pow = NULL` asks for and
+#' [.sp_show()] renders with its name. Fixed by the design, so it is worked
+#' out once and reused.
 #'
-#' @return A character vector, one entry per free parameter, naming the scale.
+#' @return A numeric vector of exponents, one per free parameter, `NA` where
+#'   the parameter is reported on its own scale.
 #' @keywords internal
 .efs_sp_kind <- function(design, pmap) {
   vapply(seq_len(pmap$nfree), function(l) {
     m <- match(l, pmap$group)
     for (bl in design$blocks)
       if (m %in% bl$theta_idx)
-        return(if (identical(bl$theta_names, "sd")) "sd" else "raw")
-    "raw"
-  }, "")
+        return(if (is.null(bl$sp_pow)) NA_real_
+               else bl$sp_pow[match(m, bl$theta_idx)])
+    NA_real_
+  }, numeric(1))
 }
 
 ## `@rdname` takes the file name, which roxygen munges for a leading dot.
 #' @rdname dot-efs_sp_kind
 #' @keywords internal
-.efs_sp <- function(rho, kind) ifelse(kind == "sd", exp(-2 * rho), exp(rho))
+.efs_sp <- function(rho, kind) exp(ifelse(is.na(kind), 1, kind) * rho)
 
 #' Between `log_sigma` and the free smoothing parameters
 #'
@@ -694,6 +706,10 @@
 
   pmap <- .efs_pairs(design)
   rho <- .efs_free(pars$log_sigma, pmap)
+  ## The same box the Laplace engine gets, so that the two engines optimise
+  ## over the same set; see [.theta_bounds()].
+  bnd <- .theta_bounds(design, pars$log_sigma)
+  clamp <- function(r) pmin(pmax(r, bnd$lower), bnd$upper)
   ## .penalty_matrix() reads only the dimension and the index vectors from
   ## this, none of which move, so it is built once rather than per evaluation.
   ph <- list(H = Matrix::Diagonal(np), i_beta = seq_len(nbeta), i_b = ib)
@@ -789,7 +805,7 @@
     acc <- NULL
     best <- Inf
     for (h in seq_len(ctl$max_halve)) {
-      cand <- evaluate(rho + a * st$step, cur$p, sprintf(" %d.%d", k, h))
+      cand <- evaluate(clamp(rho + a * st$step), cur$p, sprintf(" %d.%d", k, h))
       if (!is.null(cand)) {
         if (cand$V <= cur$V) { acc <- cand; break }
         best <- min(best, cand$V)
@@ -821,7 +837,7 @@
       break
     }
     dV <- cur$V - acc$V
-    rho <- rho + a * st$step
+    rho <- clamp(rho + a * st$step)
     cur <- acc
     nrep <- nrep + as.integer(cur$repaired)
     trace$V <- c(trace$V, cur$V)

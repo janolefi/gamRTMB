@@ -28,10 +28,11 @@
   list(H = H, i_beta = which(nm == "beta"), i_b = which(nm == "b"))
 }
 
-## Round-off allowance on an edf_j, which is mathematically confined to
-## [0, 1]. Generous by the standards of the sparse solve that produces it and
-## nowhere near the scale of a real violation: the fits that break this are
-## out by thousands, not by parts in a million.
+## Round-off allowance, per coefficient, on a penalized block's EDF -- which
+## is mathematically confined to [0, q]. Generous by the standards of the
+## sparse solve that produces it and nowhere near the scale of a real
+## violation: the fits that break this are out by millions, not by parts in a
+## million.
 .edf_tol <- 1e-6
 
 #' Is a sparse symmetric matrix positive definite?
@@ -72,15 +73,15 @@
 #'       edf_j = 1 - [H^{-1} S]_{jj},}
 #' so only the diagonal of \eqn{H^{-1} S} is needed, and that comes from a
 #' sparse solve rather than a full inverse. Null-space coefficients contribute
-#' exactly 1 and penalized ones between 0 and 1.
+#' exactly 1, and a penalized block of `q` coefficients between 0 and `q`.
 #'
 #' Checked against [mgcv::gaulss()], which agrees to three decimals on both
 #' untied and `id`-tied models.
 #'
 #' @section When the EDF do not exist:
 #' All of that assumes \eqn{H_{data}} is positive semi-definite, which is what
-#' makes \eqn{F = H^{-1} H_{data}} a projection and puts every \eqn{edf_j} in
-#' \eqn{[0, 1]}. At a point the optimiser never converged to it need not be,
+#' makes \eqn{F = H^{-1} H_{data}} a projection and puts every block's EDF in
+#' \eqn{[0, q_k]}. At a point the optimiser never converged to it need not be,
 #' and the solve still returns numbers: a four-parameter Box-Cox fit on
 #' `film90` gives EDF near \eqn{-6000} for a rank-9 basis.
 #'
@@ -88,8 +89,8 @@
 #' The penalty can and does rescue the sum: on that same fit \eqn{H} is
 #' positive definite while \eqn{H_{data} = H - S} has two negative
 #' eigenvalues, so a test on \eqn{H} passes and the EDF are still nonsense.
-#' Rather than factorise a second matrix, the \eqn{edf_j} are checked against
-#' the \eqn{[0, 1]} they are guaranteed to lie in -- the same statement, and
+#' Rather than factorise a second matrix, the block EDF are checked against
+#' the \eqn{[0, q_k]} they are guaranteed to lie in -- the same statement, and
 #' already computed.
 #'
 #' A negative EDF is not a small inaccuracy to report with a caveat; it means
@@ -121,17 +122,29 @@ edf.gamRTMB <- function(object, ...) {
   D <- object$design
   ls <- object$log_sigma
   edf_all <- 1 - Matrix::diag(Matrix::solve(ph$H, .penalty_matrix(D, ls, ph)))
-  ## Every edf_j lies in [0, 1] when the EDF exist at all; the tolerance is
-  ## for the sparse solve's round-off, not for genuinely out-of-range values,
-  ## which run to thousands rather than to fractions.
-  if (any(edf_all < -.edf_tol | edf_all > 1 + .edf_tol)) {
+  ## What has a guarantee is a whole penalized block, not a single
+  ## coefficient. With `S` block diagonal and the data Hessian `H - S`
+  ## positive semi-definite, \eqn{H^{-1} \preceq S^{-1}} and so does each
+  ## principal block, giving
+  ## \eqn{edf_k = tr(V_k S_k) \in [0, q_k]}. An individual \eqn{edf_j} is
+  ## confined to [0, 1] only when \eqn{S_k} is *diagonal*, since
+  ## \eqn{H^{-1}S} is not symmetric and its diagonal entries are not bounded
+  ## by its eigenvalues. That holds for an `iid` block and fails for a GMRF
+  ## or a `te()`: a healthy tensor product sits at 16.68 of a possible 21
+  ## with single coefficients at 1.066 and -0.179. So the coefficients are
+  ## summed before they are judged, which is also the only form in which they
+  ## are ever reported.
+  blk <- vapply(D$blocks, function(bl) sum(edf_all[ph$i_b[bl$idx]]), numeric(1))
+  qk  <- vapply(D$blocks, function(bl) as.numeric(bl$q), numeric(1))
+  out <- blk < -.edf_tol * qk | blk > qk * (1 + .edf_tol)
+  if (any(out)) {
     warning("the effective degrees of freedom are not defined at these ",
-            "values: ", sum(edf_all < -.edf_tol | edf_all > 1 + .edf_tol),
-            " of ", length(edf_all), " coefficients fall outside [0, 1], so ",
-            "the data Hessian is not positive semi-definite here and ",
-            "H^-1 H_data is not a projection. They are reported as NA. This ",
-            "fit has not converged -- check `max_grad`; see ?gamRTMB for the ",
-            "starting-value and basis options.", call. = FALSE)
+            "values: ", sum(out), " of ", length(out), " penalized blocks ",
+            "fall outside [0, k], so the data Hessian is not positive ",
+            "semi-definite here and H^-1 H_data is not a projection. They ",
+            "are reported as NA. This fit has not converged -- check ",
+            "`max_grad`; see ?gamRTMB for the starting-value and basis ",
+            "options.", call. = FALSE)
     edf_all[] <- NA_real_
   }
 
@@ -143,11 +156,8 @@ edf.gamRTMB <- function(object, ...) {
     rows[[length(rows) + 1L]] <- data.frame(
       parameter = p, term = s$label, edf = sum(edf_all[ii]),
       k = ncol(s$sm$X),
-      sp = paste(unlist(lapply(D$blocks[s$block_ids], function(bl)
-        if (identical(bl$theta_names, "sd"))
-          sprintf("%.4g", exp(-2 * ls[bl$theta_idx]))
-        else sprintf("%s=%.4g", bl$theta_names, exp(ls[bl$theta_idx])))),
-        collapse = ","),
+      sp = paste(unlist(lapply(D$blocks[s$block_ids], .sp_show, ls = ls)),
+                 collapse = ","),
       id = if (is.na(s$id)) "" else s$id, row.names = NULL)
   }
   res <- if (length(rows)) do.call(rbind, rows) else

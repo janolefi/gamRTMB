@@ -11,8 +11,8 @@ Asked of the \emph{data} Hessian \eqn{H - S}, not of \eqn{H}. The penalty can
 and does rescue \eqn{H}'s definiteness while leaving \eqn{H - S}
 indefinite, and it is \eqn{H - S} that Wood & Fasiolo's Theorem 1 needs:
 without it the multiplicative update is not guaranteed to increase the
-criterion, and the effective degrees of freedom are not in \eqn{[0, 1]}
-either (see \code{\link[=edf]{edf()}}).
+criterion, and a block's effective degrees of freedom are not in
+\eqn{[0, q_k]} either (see \code{\link[=edf]{edf()}}).
 }
 \details{
 Positive \emph{semi}-definite is the question, since a data Hessian is

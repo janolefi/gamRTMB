@@ -10,14 +10,18 @@
 .efs_sp(rho, kind)
 }
 \value{
-A character vector, one entry per free parameter, naming the scale.
+A numeric vector of exponents, one per free parameter, \code{NA} where
+the parameter is reported on its own scale.
 }
 \description{
-So that a progress line and the fitted summary show the same numbers. A
-block parameterised by a log standard deviation reports
-\eqn{\lambda = \sigma^{-2}}; one with its own parameterisation -- an SPDE's
-range, say -- reports \eqn{\exp(\theta)}, since there is no single variance
-to invert. Which of the two a free parameter gets is fixed by the design,
-so it is worked out once and reused.
+So that a progress line and the fitted summary show the same numbers. Both
+read the same field: \code{sp_pow} is the exponent with which a parameter enters
+its own penalty weight, \eqn{\lambda = \exp(sp\_pow \cdot \theta)} --
+\eqn{-2} for a log standard deviation, \eqn{1} for a log penalty weight.
+Where the map from parameters to weights is not one-to-one, as an SPDE's is
+not, there is no \eqn{\lambda} belonging to a single parameter and the
+parameter itself is reported instead, which \code{sp_pow = NULL} asks for and
+\code{\link[=.sp_show]{.sp_show()}} renders with its name. Fixed by the design, so it is worked
+out once and reused.
 }
 \keyword{internal}

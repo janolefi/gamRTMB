@@ -328,11 +328,14 @@
       try_sparse <- sparse != "never"
       scl <- build(!try_sparse)
       use_sp <- try_sparse && .use_sparse(scl[[1L]], sparse)
-      if (!use_sp && !is.null(scl[[1L]]$L))
-        stop("the smooth ", sQuote(scl[[1L]]$label), " combines several ",
-             "penalty matrices through an `L` matrix, which mgcv::",
-             "smooth2random() cannot represent. It needs sparse != \"never\".",
-             call. = FALSE)
+      if (!use_sp && length(scl[[1L]]$S) > 1L &&
+          (!is.null(scl[[1L]]$L) || .penalties_overlap(scl[[1L]]$S)))
+        stop("the smooth ", sQuote(scl[[1L]]$label), " penalises the same ",
+             "coefficients several times over", if (!is.null(scl[[1L]]$L))
+               " through an `L` matrix" else "",
+             ", which mgcv::smooth2random() cannot represent -- it needs one ",
+             "variance per penalized block. Such a term always takes the ",
+             "sparse route, so it needs sparse != \"never\".", call. = FALSE)
       if (try_sparse && !use_sp) scl <- build(TRUE)
       for (sm in scl) {
         if (isTRUE(sm$fixed))
@@ -384,12 +387,6 @@
                     else paste0("id", s$id, ":", k),
           idx = nb + seq_len(q), X = s$Xr[[k]],
           theta_idx = nsig + seq_len(s$spec[[k]]$ntheta)))
-        ## `sigma` scales an iid coefficient directly, but a GMRF coefficient
-        ## only through the penalty: its conditional standard deviation is
-        ## sigma / sqrt(Q_ii). Recording a typical Q_ii lets one
-        ## starting-value rule serve both.
-        bl$qscale <- if (identical(bl$kind, "gmrf"))
-          sqrt(mean(Matrix::diag(bl$Q))) else 1
         nsig <- nsig + bl$ntheta
         blocks[[length(blocks) + 1L]] <- bl
         loc <- c(loc, length(blocks)); nb <- nb + q

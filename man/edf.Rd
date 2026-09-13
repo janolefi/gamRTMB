@@ -33,7 +33,7 @@ kept its own sparse penalty. Wood's effective degrees of freedom,
       edf_j = 1 - [H^{-1} S]_{jj},}
 so only the diagonal of \eqn{H^{-1} S} is needed, and that comes from a
 sparse solve rather than a full inverse. Null-space coefficients contribute
-exactly 1 and penalized ones between 0 and 1.
+exactly 1, and a penalized block of \code{q} coefficients between 0 and \code{q}.
 }
 \details{
 Checked against \code{\link[mgcv:gaulss]{mgcv::gaulss()}}, which agrees to three decimals on both
@@ -42,8 +42,8 @@ untied and \code{id}-tied models.
 \section{When the EDF do not exist}{
 
 All of that assumes \eqn{H_{data}} is positive semi-definite, which is what
-makes \eqn{F = H^{-1} H_{data}} a projection and puts every \eqn{edf_j} in
-\eqn{[0, 1]}. At a point the optimiser never converged to it need not be,
+makes \eqn{F = H^{-1} H_{data}} a projection and puts every block's EDF in
+\eqn{[0, q_k]}. At a point the optimiser never converged to it need not be,
 and the solve still returns numbers: a four-parameter Box-Cox fit on
 \code{film90} gives EDF near \eqn{-6000} for a rank-9 basis.
 
@@ -51,8 +51,8 @@ Note that it is \eqn{H_{data}} and not \eqn{H} that has to be checked.
 The penalty can and does rescue the sum: on that same fit \eqn{H} is
 positive definite while \eqn{H_{data} = H - S} has two negative
 eigenvalues, so a test on \eqn{H} passes and the EDF are still nonsense.
-Rather than factorise a second matrix, the \eqn{edf_j} are checked against
-the \eqn{[0, 1]} they are guaranteed to lie in -- the same statement, and
+Rather than factorise a second matrix, the block EDF are checked against
+the \eqn{[0, q_k]} they are guaranteed to lie in -- the same statement, and
 already computed.
 
 A negative EDF is not a small inaccuracy to report with a caveat; it means
