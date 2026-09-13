@@ -341,8 +341,12 @@ predict.gamRTMB <- function(object, newdata = NULL,
     out[[p]] <- if (type == "link") eta
       else .links[[object$family$links[[p]]]]$linkinv(eta)
     trm[[p]] <- list(fit = tm, se = if (se.fit) tse else NULL)
-    ## the whole predictor is the same linear form, stacked
-    L <- do.call(cbind, c(list(Xpara), Z_all))
+    ## The whole predictor is the same linear form, stacked -- but it is a
+    ## dense n by (npara + sum q_k) matrix that only standard errors and
+    ## quantiles ever read, so a plain `predict()` (and every `logLik()` and
+    ## `fitted()` behind it) does not build it.
+    L <- if (se.fit || type == "quantile")
+      do.call(cbind, c(list(Xpara), Z_all)) else NULL
     forms[[p]] <- list(eta = eta, L = L,
                        ii = if (se.fit)
                          c(Vj$ib[D$beta_idx[[p]][seq_len(npara)]], cols))

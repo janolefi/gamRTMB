@@ -178,8 +178,6 @@ plot.gamRTMB <- function(x, type = c("terms", "qq", "worm", "quantile",
 #' @keywords internal
 .fan_cols <- function(prob, hue = "#0B5D9E") {
   d <- abs(prob - 0.5) / 0.5                       # 0 at the median, 1 at the ends
-  out <- grDevices::adjustcolor(rep(hue, length(prob)),
-                                alpha.f = 1)
   vapply(seq_along(prob), function(k)
     if (isTRUE(all.equal(d[k], 0))) "black"
     else grDevices::adjustcolor(hue, alpha.f = max(0.9 - 0.6 * d[k], 0.2)),
