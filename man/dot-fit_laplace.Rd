@@ -14,7 +14,8 @@
   control,
   family,
   inner_control = list(),
-  repars = NULL
+  repars = NULL,
+  sigma_frac = NA_real_
 )
 }
 \arguments{
@@ -22,6 +23,9 @@
 
 \item{repars}{Function of a \code{sigma_frac} returning a fresh starting
 parameter list, used to walk the ladder. \code{NULL} disables the retries.}
+
+\item{sigma_frac}{The \code{sigma_frac} \code{pars} was built at, so that the retries
+do not spend a fit repeating it.}
 }
 \description{
 Declares the coefficients random so that RTMB supplies the marginal
@@ -44,6 +48,22 @@ iteration cap, and a \code{FALSE} sends the caller to the next rung of
 \link{.sigma_frac_ladder}. If every rung fails, the fit proceeds from the
 original starting values under the full cap, so the ladder can only add
 fits, never remove one.
+}
+
+\section{Finishing}{
+
+That probe asks about the \emph{start}, so it says nothing about a fit that
+starts cleanly and stalls later, which is the commoner failure. So the
+ladder is walked a second time when \code{\link[=.outer_ok]{.outer_ok()}} says the outer
+optimisation did not get there, and the rungs already tried are skipped.
+
+The candidate kept is the one with the lowest criterion, the incumbent
+included, rather than the first that converges -- see the note in the code
+for the \code{MASS::mcycle} fit where those are 105 units of criterion apart in
+the wrong direction. Selecting that way cannot return a worse point than
+the one it was handed, and a retry that finds nothing better changes
+nothing but the time taken. The walk stops at the first candidate that both
+converges and leads, since the remaining rungs cost a full fit each.
 }
 
 \keyword{internal}

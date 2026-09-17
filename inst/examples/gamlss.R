@@ -172,11 +172,15 @@ fit_gamlss <- function(f, d) {
        ok = !is.null(m) && conv && isTRUE(m$converged))
 }
 
+## Messages are muted here as well as warnings, and for a different reason:
+## gamRTMB reports a retry over the sigma_frac ladder with message(), which is
+## worth knowing and wrong to interleave with a table. `film90-JSU` is the row
+## where it happens; run that one on its own to see it.
 fit_gamRTMB <- function(f, d) {
   m <- NULL; msg <- NA_character_
   sec <- system.time(
-    m <- suppressWarnings(
-      tryCatch(f(d), error = function(e) { msg <<- conditionMessage(e); NULL }))
+    m <- suppressWarnings(suppressMessages(
+      tryCatch(f(d), error = function(e) { msg <<- conditionMessage(e); NULL })))
   )[["elapsed"]]
   list(fit = m, sec = sec, msg = msg,
        ok = !is.null(m) && isTRUE(m$convergence))
@@ -279,8 +283,11 @@ examples <- list(
       reference fit, and by a wide margin the largest and slowest model in this
       file -- about two minutes per side. k = 25 on the mean because gamlss
       spends 21.8 df there and mgcv's default basis cannot reach it; with k = 25
-      gamRTMB spends 21.8 as well. sigma_frac is raised for the same reason as
-      in film90-JSU, and without it this fit stops short of converging.",
+      gamRTMB spends 21.8 as well. sigma_frac is pinned because this is the one
+      fit the automatic retry cannot rescue: 0.15 is not on the ladder, and
+      walking the three rungs that are costs seven minutes to find nothing
+      better. Left at the default the fit still returns, and still does not
+      converge.",
      function(d) gamlss(bmi ~ pb(age), sigma.fo = ~ pb(age), nu.fo = ~ pb(age),
                         tau.fo = ~ pb(age), family = BCPE(mu.link = "log"),
                         data = d, control = glc),
@@ -434,16 +441,18 @@ examples <- list(
   ex("film90-JSU", function() { data(film90); film90 }, "JSU / jsu2",
      "The same revenues with Johnson's SU: skewness and kurtosis on top of the
       location and scale. The slowest gamlss fit here -- thirty-six backfitting
-      cycles, well past the package default of twenty -- and the one gamRTMB
-      fit that needs sigma_frac raised, without which REML settles on a much
-      too smooth solution.",
+      cycles, well past the package default of twenty. gamRTMB does not
+      converge from its default variance-component start either, and this is
+      the row where you can watch it notice: it retries over the sigma_frac
+      ladder on its own and the first rung converges. Nothing is passed here to
+      make that happen.",
      function(d) gamlss(lborev1 ~ pb(lboopen), sigma.fo = ~ pb(lboopen),
                         nu.fo = ~ 1, tau.fo = ~ 1, family = JSU, data = d,
                         control = glc),
      function(d) gamRTMB(lborev1 ~ list(mu = ~ s(lboopen, k = 20),
                                         sigma = ~ s(lboopen, k = 20),
                                         nu = ~ 1, tau = ~ 1),
-                         family = fam("jsu2"), data = d, sigma_frac = 0.25),
+                         family = fam("jsu2"), data = d),
      list(same("mu", "mu"), same("sigma", "sigma"), same("nu", "nu"),
           same("tau", "tau"))),
 

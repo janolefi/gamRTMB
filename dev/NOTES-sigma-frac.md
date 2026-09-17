@@ -91,3 +91,57 @@ started this — `bcpe` on `film90` with four smooths — the ladder gets the fi
 to run but it still reports `max_grad = 7.8e8` and EDF that do not exist. That
 is not a starting-value problem at all; see `.inner_indefinite()` for what it
 is, and `dev/NOTES-fellner-schall.md` for the engine that would not have it.
+
+## Retrying when the fit stalls, not only when it will not start
+
+Added after fitting 33 textbook GAMLSS models both ways
+(`inst/examples/gamlss.R`). Four of them needed hand-tuning, and the pattern
+was the same every time: the objective was perfectly finite at the start, so
+`.probe_finite()` never fired, and the fit stalled later. The ladder existed
+and could not see the failure it was built for.
+
+Measured across the ladder's rungs plus the default, `-REML` at the point each
+one reaches:
+
+```
+                 sf=0.05      sf=0.005     sf=0.2       sf=0.001
+mcycle-TF     579.85 (g 6.0)  685.42 (ok)  579.29 (0.8) 685.86 (ok)
+CD4-BCT      4278.49 (NaN)   4274.36 (NaN) 4273.10 (4)  4271.16 (726)
+film90-JSU   6080.42 (129)   6065.35 (ok)  6065.35 (ok) 6065.35 (ok)
+```
+
+Three things fall out of that table.
+
+**The default is not a good value on `film90`.** It is the only rung that
+fails, and every other one reaches the same optimum 15 units of criterion
+better. That is the case the retry is for, and it now converges untouched.
+
+**Selection has to be on the criterion.** On `mcycle-TF` the two rungs that
+*converge* sit 105 units above the incumbent that does not: a retry that took
+a converged candidate on sight would trade a good fit for a badly over-smoothed
+one, which is a worse failure than the one being fixed, and a silent one.
+Keeping the lowest criterion with the incumbent in the running cannot return a
+worse point than it was handed. `mcycle-TF` accordingly moves 579.85 -> 579.29
+and still reports `convergence = FALSE`, which is the honest answer.
+
+**`nlminb`'s code is not the convergence test.** Every row above comes back
+with a nonzero code and `false convergence (8)`, including `mcycle-TF` at
+`sigma_frac = 0.001` sitting on `max|g| = 1.9e-04`. That is what
+`.outer_ok()` is for; the threshold is `.efs_defaults$gtol` so that the two
+engines mean the same thing by the word.
+
+### What it costs, and what it does not fix
+
+Each rung is a full refit, taken only by a fit that has already failed. On the
+four-parameter `dbbmi` BCPE (n = 7294, k = 25) that is 265s becoming 726s, and
+the walk finds nothing: `sigma_frac = 0.15` converges there and is not on the
+ladder. Whether to widen the ladder is a separate question from this one and
+wants its own measurements -- the rungs are shared with the start-time probe,
+which has its own tuning above. For now `dbbmi` is pinned in the example suite
+and the retry announces itself before spending the time.
+
+`CD4-BCT` and `mcycle-TF` are not fixed by any rung under REML; both converge
+under `method = "aREML"`. A criterion fallback is the obvious next thing to
+try and is deliberately not done here: it would have to compare two different
+criteria to choose between them, which the objective-selection rule above
+cannot do.

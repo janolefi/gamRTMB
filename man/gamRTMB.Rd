@@ -57,11 +57,17 @@ reaching for and what it costs.}
 
 \item{sigma_frac}{Tuning constant for the variance-component starting
 values: each smooth starts contributing this fraction of its parameter's
-linear-predictor scale. See \code{\link[=.init_pars]{.init_pars()}}. Raise it if a fit converges
-to an over-smooth solution. If the objective is not finite here, a few
-other values are tried automatically before giving up (see
-\link{.sigma_frac_ladder}) and the one used is reported; passing this
-argument explicitly does not switch that off, but passing \code{start} does.}
+linear-predictor scale. See \code{\link[=.init_pars]{.init_pars()}}.
+
+A few other values are tried automatically (see \link{.sigma_frac_ladder}),
+in two places: when the objective is not finite here, and when the fit
+runs but the smoothing parameters do not converge. The value finally used
+is reported as \code{fit$sigma_frac_used} and named in a message. A retry
+keeps whichever start reaches the lowest criterion, this one included, so
+it can only improve the fit -- but it costs a refit each time, which on a
+large model is the difference between seconds and minutes. Passing this
+argument explicitly does not switch the retries off; passing \code{start}
+does.}
 
 \item{sparse}{How to treat a smooth whose single penalty is already sparse
 -- a Markov random field, a random walk, a supplied GMRF precision.
