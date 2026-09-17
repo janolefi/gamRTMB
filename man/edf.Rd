@@ -10,7 +10,7 @@ edf(object, ...)
 \method{edf}{gamRTMB}(object, ...)
 }
 \arguments{
-\item{object}{A \code{gamRTMB} fit, made with \code{method = "REML"}.}
+\item{object}{A \code{gamRTMB} fit.}
 
 \item{...}{Ignored.}
 }

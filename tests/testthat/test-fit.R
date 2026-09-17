@@ -69,12 +69,46 @@ test_that("standard errors need the joint precision, and are finite with it", {
   expect_true(all(p$se.fit$mean > 0))
 })
 
-test_that("ML runs but cannot report EDF", {
+test_that("ML reports EDF, and AIC on the same scale as the other two", {
+  ## `beta` is not in the random vector under ML, so TMB's sparse Hessian --
+  ## built with `skipFixedEffects` -- leaves its rows empty and cannot supply
+  ## this. The quantity exists all the same, and .coef_hessian() tapes it.
   d <- sim_ls(200)
-  fit <- gamRTMB(y ~ list(mean = ~ s(x1, k = 8)), 
-                 data = d, method = "ML")
+  fit <- gamRTMB(y ~ list(mean = ~ s(x1, k = 8)), data = d, method = "ML")
   expect_true(fit$convergence)
-  expect_error(edf(fit), "REML")
+  e <- edf(fit)
+  expect_true(all(is.finite(e$edf)))
+  expect_true(all(e$edf >= 0 & e$edf <= e$k))
+  ## The trap this closes: df used to fall back to counting parameters, so
+  ## AIC() came back several times too small and looked fine.
+  expect_equal(attr(logLik(fit), "df"), attr(e, "edf.total"))
+  expect_gt(attr(logLik(fit), "df"), fit$design$nbeta + fit$design$nsigma_free)
+})
+
+test_that("the ML penalized Hessian is the one TMB would give", {
+  ## Same matrix, two ways: under REML the fitted object supplies it directly,
+  ## so a REML fit is the place the taped one can be checked against it.
+  d <- sim_ls(200)
+  fit <- gamRTMB(y ~ list(mean = ~ s(x1, k = 8), sd = ~ s(x2, k = 6)),
+                 data = d, method = "REML")
+  ph <- .penalized_hessian(fit)
+  ord <- c(ph$i_beta, ph$i_b)
+  taped <- .coef_hessian(
+    .make_nll(fit$design, fit$family, fit$y, fit$fixed, fit$weights,
+              obs = FALSE),
+    fit$coefficients$beta, fit$coefficients$b, fit$log_sigma)
+  expect_equal(as.matrix(taped), as.matrix(ph$H)[ord, ord],
+               ignore_attr = TRUE, tolerance = 1e-10)
+})
+
+test_that("logLik warns rather than quietly miscounting df", {
+  ## The fallback counts parameters instead of EDF, which is several times too
+  ## small; an AIC from it is not comparable with anything.
+  d <- sim_ls(200)
+  fit <- gamRTMB(y ~ list(mean = ~ s(x1, k = 8)), data = d, method = "ML")
+  fit$H <- NULL                       # a fit with no usable penalized Hessian
+  expect_warning(ll <- logLik(fit), "not comparable")
+  expect_equal(attr(ll, "df"), fit$design$nbeta + fit$design$nsigma_free)
 })
 
 test_that("aREML is a criterion, not a second axis to cross with ML", {

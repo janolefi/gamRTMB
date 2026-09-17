@@ -101,9 +101,14 @@ vcov.gamRTMB <- function(object, ...) {
 #'
 #' With `df` = total EDF this is the convention used by [mgcv::gam()] and by
 #' GAMLSS's GAIC, so `AIC()` and `BIC()` are comparable across models fitted
-#' to the same response. Under `method = "ML"`, where effective degrees of
-#' freedom are unavailable, `df` falls back to counting the fixed
-#' coefficients and free smoothing parameters.
+#' to the same response, whichever `method` each was fitted by.
+#'
+#' Where [edf()] cannot be had at all -- a fit that stopped somewhere the
+#' penalized Hessian does not exist -- `df` falls back to counting the fixed
+#' coefficients and free smoothing parameters. That is a much smaller number
+#' than the total EDF, so an `AIC()` from such a fit is not comparable with
+#' one from a fit that converged -- which is worth being told rather than
+#' left to notice, so the fallback warns.
 #'
 #' @param object A `gamRTMB` fit.
 #' @param ... Ignored.
@@ -119,8 +124,21 @@ logLik.gamRTMB <- function(object, ...) {
   theta <- stats::predict(object, type = "response")
   ld <- object$family$logdens(object$y, theta, object$fixed)
   ll <- if (is.null(object$weights)) sum(ld) else sum(object$weights * ld)
-  df <- tryCatch(attr(edf(object), "edf.total"), error = function(e)
-    object$design$nbeta + object$design$nsigma_free)
+  ## The fallback is for a fit with no usable penalized Hessian, which since
+  ## [.coef_hessian()] means a fit that did not get to a mode rather than one
+  ## fitted under a particular `method`. It counts parameters instead of
+  ## effective degrees of freedom, so it is typically several times too small
+  ## and the resulting AIC is not comparable with any other fit's. Say so:
+  ## silently returning a plausible number was the trap here.
+  df <- tryCatch(attr(edf(object), "edf.total"), error = function(e) {
+    warning("this fit has no usable penalized Hessian, so its effective ",
+            "degrees of freedom are unavailable (", conditionMessage(e),
+            ") and `df` counts estimated parameters instead. That is much ",
+            "smaller than the total EDF, so AIC() and BIC() from this fit ",
+            "are not comparable with those from a converged one.",
+            call. = FALSE)
+    object$design$nbeta + object$design$nsigma_free
+  })
   structure(ll, df = df, nobs = object$design$n, class = "logLik")
 }
 

@@ -476,9 +476,10 @@
 #' (2011); it is not a sparsity argument, since mgcv's bases have global
 #' support and are dense either way.
 #'
-#' `"ML"` keeps them as fixed effects, which also means [edf()] is
-#' unavailable, since the penalized Hessian over every coefficient is not
-#' formed.
+#' `"ML"` keeps them as fixed effects, so the criterion is the marginal
+#' likelihood of the penalized coefficients alone. Two REML fits whose
+#' unpenalized structure differs are not comparable on their criterion; two ML
+#' fits are.
 #'
 #' `"aREML"` is **approximate REML**: the same criterion as `"REML"`,
 #' optimised by the extended Fellner-Schall method of Wood & Fasiolo (2017)
@@ -651,6 +652,15 @@ gamRTMB <- function(formula, family = fam("norm"), data = NULL, weights = NULL,
     .fit_laplace(nll, pars, design, method, joint_precision, silent,
                  control, family, inner_control, repars)
 
+  ## Under "REML" the penalized Hessian over every coefficient is the Laplace
+  ## approximation's own and comes off `obj` for free; under "aREML" the
+  ## engine forms it itself. "ML" is the case that has to be asked for, and
+  ## [.coef_hessian()] says why it cannot be read off the fitted object.
+  if (method == "ML")
+    fit$H <- .coef_hessian(.make_nll(design, family, y, fx, w, obs = FALSE),
+                           fit$coefficients$beta, fit$coefficients$b,
+                           fit$log_sigma)
+
   fit$family <- family
   fit$method <- method
   fit$design <- design
@@ -663,6 +673,49 @@ gamRTMB <- function(formula, family = fam("norm"), data = NULL, weights = NULL,
   fit$dropped <- md$dropped
   fit$na.action <- na.action
   structure(fit, class = "gamRTMB")
+}
+
+#' The penalized Hessian in the coefficients, from a tape of its own
+#'
+#' The curvature of the joint penalized negative log-likelihood in
+#' `c(beta, b)`, at fixed smoothing parameters. Used under `method = "ML"`,
+#' where it cannot be had from the fitted object: `RTMB::MakeADFun()` builds
+#' its sparse Hessian with `skipFixedEffects`, so what comes back covers the
+#' random vector only and leaves the `beta` rows empty. Under `"ML"` the
+#' unpenalized coefficients are not in that vector, and the matrix would be
+#' missing exactly the rows [edf()] needs.
+#'
+#' Nothing about the quantity depends on the criterion, though. It is the
+#' second derivative of the same penalized objective either way, so it is
+#' taped here rather than declared unavailable.
+#'
+#' The `nll` must be one built with `obs = FALSE`. `RTMB::OBS()` keys on the
+#' deparsed name of its argument in a registry global to RTMB, which
+#' `MakeADFun` resets per object and `MakeTape` does not -- so a tape built
+#' over an `obs = TRUE` objective leaves `"y"` behind pointing at this
+#' model's response, and the next model's `OBS(y)` returns it. See
+#' [.make_nll()].
+#'
+#' @param nll The joint penalized negative log-likelihood, from
+#'   [.make_nll()] with `obs = FALSE`.
+#' @param beta,b The fitted coefficients.
+#' @param log_sigma The fitted log standard deviations, at full length. Held
+#'   constant: the tape is over the coefficients alone, which also keeps a
+#'   `dgmrf` block's `log|Q(theta)|` off it, since RTMB declines a second
+#'   sparse Jacobian through one.
+#' @return A symmetric sparse matrix ordered `beta` then `b`, or `NULL` if the
+#'   tape could not be built.
+#' @keywords internal
+.coef_hessian <- function(nll, beta, b, log_sigma) {
+  nbeta <- length(beta)
+  ib <- nbeta + seq_len(length(b))
+  fc <- function(x) nll(list(beta = x[seq_len(nbeta)], b = x[ib],
+                             log_sigma = log_sigma))
+  p <- c(beta, b)
+  tryCatch({
+    tape <- RTMB::MakeTape(fc, p)
+    .sym_sparse(tape$jacfun()$jacfun(sparse = TRUE)(p))
+  }, error = function(e) NULL)
 }
 
 #' Laplace engine

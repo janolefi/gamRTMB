@@ -1,0 +1,383 @@
+---
+title: "REML, ML and approximate REML"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{REML, ML and approximate REML}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 7,
+                      fig.height = 3.6, fig.align = "center", dpi = 110)
+```
+
+`gamRTMB()` has one argument for how the smoothing parameters are chosen, with
+three values:
+
+```{r args}
+library(gamRTMB)
+formals(gamRTMB)$method
+```
+
+This vignette says what the three do, shows how far apart they land on models
+all of them can fit, and then spends most of its length on the places the
+choice stops being free: a convergence flag that means something different
+under one of them, a model `"REML"` cannot start on, and what `"aREML"` gives
+up to be able to fit it.
+
+## The three, in one paragraph each
+
+Every smooth is reparameterised by `mgcv::smooth2random()` so that its
+penalized coefficients are iid Gaussian random effects. What is left to decide
+is what the *unpenalized* coefficients — each parameter's intercept, and each
+smooth's null space — do while the smoothing parameters are being estimated.
+
+**`"REML"`**, the default, puts them into the random vector alongside the
+penalized coefficients, so one Laplace approximation integrates out both. That
+is the bias correction of Wood (2011): the smoothing parameters are then
+chosen from a criterion that has already accounted for the mean structure
+rather than one that treats it as known.
+
+**`"ML"`** keeps them as fixed effects. The criterion is then the marginal
+likelihood of the penalized coefficients only.
+
+**`"aREML"`** is the same criterion as `"REML"` — not a third one — optimised
+differently. Instead of handing the smoothing parameters to `nlminb` with a
+gradient from the Laplace approximation, it uses the extended Fellner-Schall
+update of Wood & Fasiolo (2017), which drops the term in that gradient
+requiring third derivatives of the log-likelihood. **The approximation is in
+the gradient, not in the criterion**, which is why the value it reports is
+comparable with a `"REML"` fit's.
+
+## On a model all three can fit
+
+The motorcycle data from `vignette("gamRTMB")`, with a smooth on the mean and
+a smooth on the standard deviation:
+
+```{r mcycle}
+data(mcycle, package = "MASS")
+f <- accel ~ list(mean = ~ s(times, k = 20), sd = ~ s(times, k = 12))
+
+tm <- function(e) unname(system.time(e)["elapsed"])
+fits <- list()
+secs <- c()
+for (m in c("REML", "ML", "aREML"))
+  secs[m] <- tm(fits[[m]] <- gamRTMB(f, data = mcycle, method = m))
+
+data.frame(
+  seconds   = round(secs, 2),
+  criterion = round(sapply(fits, `[[`, "objective"), 3),
+  logLik    = round(sapply(fits, function(x) as.numeric(logLik(x))), 2),
+  edf       = round(sapply(fits, function(x) attr(edf(x), "edf.total")), 2)
+)
+```
+
+Two things to read off. The `"ML"` criterion is a different number from the
+other two and is **not** comparable with them — it is a different marginal
+likelihood, over a smaller random vector. The `"REML"` and `"aREML"` values
+*are* comparable, and the gap between them, about 0.15 of a nat here, is how
+far short of the `"REML"` optimum the Fellner-Schall iteration stopped. That
+is a large gap by the standards of this approximation — over the models in
+`dev/bench-efs.R` it runs to a few thousandths — and `mcycle`'s sharply
+varying `sd` is why. Note which direction it goes: `"aREML"` ends at a
+slightly *rougher* fit, half an effective degree of freedom more, with a
+higher log-likelihood and a worse criterion.
+
+That difference is visible in the smoothing parameters and barely visible in
+the curves:
+
+```{r sp}
+signif(sapply(fits, function(x) exp(-2 * x$log_sigma)), 3)
+
+p <- lapply(fits, predict, type = "response")
+sapply(p[c("ML", "aREML")], function(q) c(
+  mean = max(abs(q$mean - p$REML$mean)) / diff(range(p$REML$mean)),
+  sd   = max(abs(q$sd   - p$REML$sd))   / diff(range(p$REML$sd))))
+```
+
+The smoothing parameter on the mean agrees to a couple of percent across the
+three fits; the one on `sd` is a third smaller under `"aREML"`. The second block is
+the largest discrepancy between each fit's curves and the `"REML"` fit's, as a
+fraction of the range that curve covers: half a percent on the mean, and
+between three and nine percent on the standard deviation. A smoothing
+parameter has to move a long way to move a fitted curve.
+
+```{r curves, fig.alt = "Two panels showing the fitted mean and fitted standard deviation against time, with the three methods' curves overplotted. The curves are indistinguishable on the mean and separate only slightly on the standard deviation."}
+par(mfrow = c(1, 2), mar = c(4, 4, 2, 1))
+o <- order(mcycle$times)
+for (what in c("mean", "sd")) {
+  matplot(mcycle$times[o], sapply(p, function(q) q[[what]])[o, ], type = "l",
+          lty = 1:3, lwd = 2, col = c("black", "#D55E00", "#0072B2"),
+          bty = "n", xlab = "time (ms)", ylab = paste("fitted", what))
+  legend("topleft", names(p), lty = 1:3, lwd = 2, bty = "n",
+         col = c("black", "#D55E00", "#0072B2"))
+}
+```
+
+## Does the choice change the answer?
+
+The table above is one data set. To ask whether the criterion matters at a
+sample size where it might, here are forty replicates of a Gaussian
+location-scale model at `n = 100`, with both the mean and the log standard
+deviation smooth and known:
+
+```{r sim}
+one <- function(sx, n = 100) {
+  set.seed(sx)
+  x <- sort(runif(n))
+  mu <- sin(2 * pi * x); sg <- exp(-1 + 0.8 * cos(2 * pi * x))
+  d <- data.frame(x = x, y = rnorm(n, mu, sg))
+  fs <- y ~ list(mean = ~ s(x, k = 10), sd = ~ s(x, k = 10))
+  unlist(lapply(c("REML", "ML", "aREML"), function(m) {
+    fit <- suppressWarnings(gamRTMB(fs, data = d, method = m))
+    q <- predict(fit, type = "response")
+    c(mu = sqrt(mean((q$mean - mu)^2)),
+      sd = sqrt(mean((log(q$sd) - log(sg))^2)),
+      conv = isTRUE(fit$convergence))
+  }))
+}
+z <- vapply(1:40, one, numeric(9))
+rownames(z) <- rep(c("REML", "ML", "aREML"), each = 3)
+
+data.frame(
+  rmse_mean = round(apply(z[c(1, 4, 7), ], 1, median), 3),
+  rmse_logsd = round(apply(z[c(2, 5, 8), ], 1, median), 3),
+  converged = paste0(rowSums(z[c(3, 6, 9), ]), "/40")
+)
+```
+
+The first two columns are median root mean squared errors against the truth —
+the mean on the response scale, the standard deviation on the log scale. On
+accuracy there is nothing much to choose between the three: `"ML"` happens to
+do a little better on the spread here and that is one simulation setting, not
+a finding. The third column is another matter, and it is the next thing to
+explain.
+
+## Reading `"aREML"`'s convergence flag
+
+`"aREML"` reports `converged: FALSE` on a good half of those replicates. That
+is not half a dozen bad fits. Take one of them and compare it against the
+`"REML"` fit of the same data:
+
+```{r stall}
+set.seed(3)
+x <- sort(runif(100))
+mu <- sin(2 * pi * x); sg <- exp(-1 + 0.8 * cos(2 * pi * x))
+ds <- data.frame(x = x, y = rnorm(100, mu, sg))
+fs <- y ~ list(mean = ~ s(x, k = 10), sd = ~ s(x, k = 10))
+
+a1 <- suppressWarnings(gamRTMB(fs, data = ds, method = "aREML"))
+r1 <- gamRTMB(fs, data = ds, method = "REML")
+a1
+c(REML = r1$objective, aREML = a1$objective)
+e1 <- rbind(REML = edf(r1)$edf, aREML = edf(a1)$edf)
+colnames(e1) <- paste(edf(r1)$parameter, edf(r1)$term)
+round(e1, 3)
+```
+
+The criterion is three thousandths of a nat above the `"REML"` optimum, and
+the two smooths' effective degrees of freedom agree to within 0.06. What the flag means is
+what the optimiser message says: *no step in the smoothing parameters improved
+the criterion*. The Fellner-Schall step is first order and its gradient is
+missing a term, so near the optimum it runs out of downhill direction before
+the criterion stops being flat. Stalling there is the expected way for this
+iteration to finish on an easy problem, and it is reported as a non-success
+because the engine cannot tell it apart from stalling somewhere worse.
+
+So under `"aREML"`, `converged = FALSE` is a prompt to look rather than a
+verdict. The things to look at are the criterion against a `"REML"` fit where
+one exists, whether the data Hessian was repaired at the final point, and
+whether the effective degrees of freedom are sane. Under `"REML"` and `"ML"`
+the flag is `nlminb`'s and means what it usually means.
+
+## Effective degrees of freedom, under all three
+
+Effective degrees of freedom need the penalized Hessian over *every*
+coefficient, and all three methods can supply it — though `"ML"` gets there by
+a different route. Under `"REML"` and `"aREML"` the matrix is already in hand:
+the Laplace approximation is built over the whole coefficient vector in the
+first case, and the Fellner-Schall iteration forms it itself in the second.
+Under `"ML"` the unpenalized coefficients are not in the random vector, so
+TMB's own sparse Hessian comes back with their rows empty and it is taped
+separately at the fitted coefficients.
+
+```{r edf-all}
+lapply(fits, function(x) edf(x)[c("parameter", "term", "edf")])
+```
+
+The consequence worth having is that `AIC()` means the same thing whichever
+method produced the fit, because `logLik()` takes its degrees of freedom from
+`edf()`:
+
+```{r ml-aic}
+sapply(fits, function(x) c(logLik = round(as.numeric(logLik(x)), 2),
+                           df = round(attr(logLik(x), "df"), 2),
+                           AIC = round(AIC(x), 1)))
+```
+
+Note the shape of that table. Three fits with `df` near 24, and `AIC` differing
+by a few units — the `"ML"` fit is a little smoother, spends a little less, and
+fits a little worse. That is a comparison you can act on. The one thing that
+would break it is a fit with no usable penalized Hessian at all, where `df`
+falls back to counting parameters and comes out several times too small;
+`logLik()` warns when that happens rather than returning a number that looks
+fine.
+
+So why keep `"ML"`? Two reasons, and both are about models rather than about
+this data set. A REML criterion is a marginal likelihood with the fixed
+effects integrated out, so two REML fits with *different* unpenalized
+structure are not comparable on it; two ML fits are. And when a family's
+log-likelihood is not concave in its own parameterisation, it is the
+unpenalized coefficients that tend to carry the non-concavity — moving them
+out of the random vector is sometimes enough to let a fit start at all. The
+error `"REML"` raises in that situation says so.
+
+## Where `"REML"` cannot start
+
+That is the next example. `bcpe` — the Box-Cox power exponential, four
+parameters, each with its own smooth — on the film revenue data:
+
+```{r bcpe-setup, eval = requireNamespace("gamlss.data", quietly = TRUE)}
+data(film90, package = "gamlss.data")
+set.seed(1)
+dfilm <- film90[sample(nrow(film90), 600), ]
+fb <- lborev1 ~ list(mu    = ~ s(lboopen, k = 8), sigma = ~ s(lboopen, k = 8),
+                     nu    = ~ s(lboopen, k = 8), tau   = ~ s(lboopen, k = 8))
+```
+
+```{r bcpe-reml, error = TRUE, eval = requireNamespace("gamlss.data", quietly = TRUE)}
+gamRTMB(fb, family = fam("bcpe"), data = dfilm, method = "REML")
+```
+
+The Laplace approximation's log determinant needs the inner Hessian positive
+definite, and `bcpe`'s is not — at the starting values or anywhere else, since
+this is the family's own parameterisation rather than a bad start. There is
+nothing to retry.
+
+The message suggests `method = "ML"`, which is the right thing to try first
+and does not work here. It starts, runs for half a minute, and stops
+somewhere that is not a mode at all:
+
+```{r bcpe-ml, warning = FALSE, eval = requireNamespace("gamlss.data", quietly = TRUE)}
+gamRTMB(fb, family = fam("bcpe"), data = dfilm, method = "ML")
+```
+
+A gradient of that size is not a near miss. Moving the unpenalized
+coefficients out of the random vector was enough to make the objective finite
+at the start, and not enough to make the surface something `nlminb` can walk.
+
+`"aREML"` never forms that log determinant's derivative and never needs the
+inner Hessian positive definite; it repairs the *data* Hessian instead, and
+says how often it had to:
+
+```{r bcpe-efs, warning = FALSE, eval = requireNamespace("gamlss.data", quietly = TRUE)}
+fb_fit <- gamRTMB(fb, family = fam("bcpe"), data = dfilm, method = "aREML")
+fb_fit
+edf(fb_fit)
+```
+
+This one is worth running the checklist from two sections ago over, because
+unlike the stall at `n = 100` it does not pass. The flag is `FALSE` again, but
+here the data Hessian was repaired *at the final point* — so the criterion and
+the effective degrees of freedom belong to the repaired problem rather than to
+the model as posed — and three of the four smooths have collapsed to barely
+more than a straight line. There is no `"REML"` fit to compare the criterion
+against. Treat this as a fit that got somewhere rather than a fit you would
+report: on 600 rows this model is at the edge of what the data supports, and
+the printout is saying so in three separate places.
+
+It is still the only one of the three methods that returns anything at all
+here. On the full 4031 rows the same call behaves much better, spending
+between 5.5 and 6.9 effective degrees of freedom per smooth, with the repair
+confined to an intermediate iteration; it takes about 40 seconds, which is why
+this vignette subsamples.
+
+## What `"aREML"` costs
+
+**Standard errors are conditional on the smoothing parameters.** Under
+`"REML"` and `"ML"` the coefficient covariance comes from the joint precision
+matrix and allows for the uncertainty in the smoothing parameters — mgcv's
+`unconditional = TRUE`. `"aREML"` has no joint precision, because the block it
+would need is the second derivative of the criterion in the smoothing
+parameters, which is exactly the term Fellner-Schall exists to avoid. It
+inverts the penalized Hessian instead, so intervals are a little narrow:
+
+```{r se}
+nd <- data.frame(times = c(10, 20, 30, 40))
+se <- sapply(fits, function(x)
+  predict(x, newdata = nd, type = "link", se.fit = TRUE)$se.fit$mean)
+rownames(se) <- paste0(nd$times, " ms")
+round(se, 3)
+round(se[, "aREML"] / se[, "REML"], 3)
+```
+
+**`max_grad` is a diagnostic, not a certificate**, for the reason the
+convergence section gave: the Fellner-Schall gradient does not vanish at the
+optimum, so its largest component does not measure stationarity the way the
+Laplace engine's does. The print method labels it `max|FS grad|` to keep the
+two apart. On the `mcycle` fits the three sit orders of magnitude away from
+each other and all three fits are fine:
+
+```{r grad}
+sapply(fits, `[[`, "max_grad")
+```
+
+**Some arguments do not apply.** `sigma_frac`, `joint_precision` and
+`inner_control` are all about the Laplace engine, and `"aREML"` silently has
+no use for them. `control` means something different too: it is merged onto
+`.efs_defaults` rather than passed to `nlminb`.
+
+## Speed is mostly not the reason
+
+On the models in this vignette, and on the eight in `dev/bench-efs.R`,
+`"aREML"` has measured anywhere between 0.35 and 2.0 times the `"REML"` time
+with no clear pattern. The timings in the first table are a fair sample: no
+order to them.
+
+That is because the term `"aREML"` avoids only becomes the dominant cost when
+the tape for it gets large, which needs many coefficients rather than many
+observations. A tensor product is the easiest way to reach that:
+
+```{r t2}
+set.seed(1)
+n <- 600
+dt <- data.frame(x1 = runif(n), x2 = runif(n))
+dt$y <- rnorm(n, sin(2 * pi * dt$x1) + cos(2 * pi * dt$x2), 0.4)
+ft <- y ~ list(mean = ~ t2(x1, x2, k = 10), sd = ~ 1)
+
+tt <- c()
+for (m in c("REML", "aREML"))
+  tt[m] <- tm(ftt <- gamRTMB(ft, data = dt, method = m))
+round(tt, 1)
+```
+
+Just over a hundred coefficients, and `"aREML"` is ahead for the first time.
+Pushed further — `k = 12` at `n = 800`, so 143 coefficients — the gap on this
+machine widens to about 1.5 times, with the two criteria 0.007 nats apart.
+Still not a large factor, and still not a reason on its own to give up
+unconditional standard errors. Read it as the direction the cost curves
+diverge in rather than as a benchmark.
+
+## Which to use
+
+- **`"REML"`** unless something below applies. It is the default, it is the
+  best-founded criterion of the three, it reports effective degrees of freedom
+  and unconditional standard errors, and its convergence diagnostic means what
+  it says.
+- **`"ML"`** to compare models whose unpenalized structure differs, or as the
+  first thing to try when `"REML"` will not start — bearing in mind the `bcpe`
+  example, where it starts and gets nowhere.
+- **`"aREML"`** when `"REML"` will not start and `"ML"` does not rescue it —
+  in practice, the harder four-parameter families — or when you want a second
+  opinion on a `"REML"` fit's smoothing parameters from an optimiser with a
+  completely different failure mode. Read `max_grad` as a hint rather than a
+  verdict, read `converged = FALSE` the same way, and remember the intervals
+  are conditional.
+
+Nothing here is a reason to fit every model three ways. On a model all three
+can fit they agree, and the point of naming them is the models where they do
+not.
+
+For how the approximation was validated and what each design decision cost,
+`dev/NOTES-fellner-schall.md` in the package sources keeps the record.

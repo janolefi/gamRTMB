@@ -14,14 +14,16 @@
 #' @return `list(H, i_beta, i_b)`, or `NULL` when the fit did not form it.
 #' @keywords internal
 .penalized_hessian <- function(fit) {
-  ## "aREML" forms this matrix itself, in the parameter list's own ordering,
-  ## `beta` then `b` -- which is the ordering this function promises.
-  if (identical(fit$method, "aREML"))
+  ## "aREML" and "ML" both carry this matrix on the fit, in the parameter
+  ## list's own ordering -- `beta` then `b`, which is the ordering this
+  ## function promises. The EFS engine forms it as part of the fit;
+  ## [.coef_hessian()] tapes it for "ML", where `beta` is not in the random
+  ## vector and TMB's sparse Hessian would leave its rows empty.
+  if (fit$method != "REML")
     return(if (is.null(fit$H)) NULL else
       list(H = fit$H, i_beta = seq_len(fit$design$nbeta),
            i_b = fit$design$nbeta + seq_len(fit$design$nb)))
   if (is.null(fit$obj)) return(NULL)
-  if (fit$method != "REML") return(NULL)   # beta is not in the random vector
   obj <- fit$obj
   H <- obj$env$spHess(obj$env$last.par.best, random = TRUE)
   nm <- names(obj$env$par[obj$env$random])
@@ -98,7 +100,7 @@
 #' with a warning pointing at `max_grad`. See [.inner_indefinite()] for how a
 #' fit gets into that state.
 #'
-#' @param object A `gamRTMB` fit, made with `method = "REML"`.
+#' @param object A `gamRTMB` fit.
 #' @param ... Ignored.
 #' @return A data frame with one row per smooth: parameter, term label, EDF,
 #'   basis dimension, smoothing parameter(s) and `id`. The total EDF over all
@@ -116,9 +118,9 @@ edf.gamRTMB <- function(object, ...) {
   ph <- .penalized_hessian(object)
   if (is.null(ph))
     stop("effective degrees of freedom need the penalized Hessian over every ",
-         "coefficient, and method = \"ML\" does not form it: the unpenalized ",
-         "coefficients are fixed effects there rather than part of the random ",
-         "vector. Use method = \"REML\" or \"aREML\".")
+         "coefficient, and this fit did not keep one. Check `max_grad`: a fit ",
+         "that stopped somewhere the objective cannot be differentiated ",
+         "twice does not have this matrix to give.", call. = FALSE)
   D <- object$design
   ls <- object$log_sigma
   edf_all <- 1 - Matrix::diag(Matrix::solve(ph$H, .penalty_matrix(D, ls, ph)))

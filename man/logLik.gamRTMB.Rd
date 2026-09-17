@@ -25,9 +25,14 @@ available as \code{fit$objective}.
 \details{
 With \code{df} = total EDF this is the convention used by \code{\link[mgcv:gam]{mgcv::gam()}} and by
 GAMLSS's GAIC, so \code{AIC()} and \code{BIC()} are comparable across models fitted
-to the same response. Under \code{method = "ML"}, where effective degrees of
-freedom are unavailable, \code{df} falls back to counting the fixed
-coefficients and free smoothing parameters.
+to the same response, whichever \code{method} each was fitted by.
+
+Where \code{\link[=edf]{edf()}} cannot be had at all -- a fit that stopped somewhere the
+penalized Hessian does not exist -- \code{df} falls back to counting the fixed
+coefficients and free smoothing parameters. That is a much smaller number
+than the total EDF, so an \code{AIC()} from such a fit is not comparable with
+one from a fit that converged -- which is worth being told rather than
+left to notice, so the fallback warns.
 }
 \examples{
 set.seed(1)

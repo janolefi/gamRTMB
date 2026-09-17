@@ -342,7 +342,31 @@ repaired, which is when the reported criterion and EDF are affected.
 Unchanged from the plan, and it held. `edf()` and `vcov()` go through
 `.penalized_hessian()` and `.joint_cov()`, each of which grew one branch.
 `fit$obj` is still not promised — EFS has tapes, not an RTMB object — and
-`.joint_cov()` checks the engine rather than assuming. One thing the plan did
-not anticipate: because EFS forms the penalized Hessian over *every*
-coefficient itself, `edf()` now works under `"ML"` as well, which it never
-could on the Laplace engine.
+`.joint_cov()` checks the engine rather than assuming.
+
+One thing the plan did not anticipate, stated wrongly here for a while, and
+since generalised. EFS forms the penalized Hessian over *every* coefficient
+itself and puts it on the fit as `fit$H`, which made `.penalized_hessian()` a
+plain accessor for this engine. An earlier version of this note concluded from
+that that `edf()` "now works under `"ML"` as well". It did not: `method =
+"ML"` runs on the Laplace engine and never touches EFS, so `edf()` went on
+refusing there.
+
+What was true is that `"ML"` wanted the same thing. The refusal rested on the
+unpenalized coefficients not being in the random vector — which is a statement
+about where the matrix can be *read from*, not about whether it exists.
+`MakeADFun` builds its sparse Hessian with `skipFixedEffects`, so under `"ML"`
+it comes back with the `beta` rows empty; the curvature of the penalized
+objective in those coefficients is perfectly well defined all the same.
+`.coef_hessian()` tapes it — `MakeTape` over `c(beta, b)` with the smoothing
+parameters held constant, the same shape of tape this engine uses, and
+`obs = FALSE` for the same `OBS()` registry reason — and `"ML"` fills `fit$H`
+the way `"aREML"` does. Checked against a REML fit's own `spHess`, where the
+matrix can be had both ways: agreement to 4e-16 relative.
+
+Worth recording what that had been costing downstream, because the failure was
+silent. `logLik()` takes its `df` from `edf()` and fell back to counting
+parameters when `edf()` failed, so every `"ML"` fit reported an `AIC()`
+computed with roughly a quarter of the right degrees of freedom — 1078 against
+the 1110 a REML fit of the same `mcycle` model gets — and nothing said so. The
+fallback now warns, and fires only for a fit that did not reach a mode.

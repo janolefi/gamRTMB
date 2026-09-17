@@ -186,9 +186,10 @@ integrates out both. This is the bias and stability correction of Wood
 (2011); it is not a sparsity argument, since mgcv's bases have global
 support and are dense either way.
 
-\code{"ML"} keeps them as fixed effects, which also means \code{\link[=edf]{edf()}} is
-unavailable, since the penalized Hessian over every coefficient is not
-formed.
+\code{"ML"} keeps them as fixed effects, so the criterion is the marginal
+likelihood of the penalized coefficients alone. Two REML fits whose
+unpenalized structure differs are not comparable on their criterion; two ML
+fits are.
 
 \code{"aREML"} is \strong{approximate REML}: the same criterion as \code{"REML"},
 optimised by the extended Fellner-Schall method of Wood & Fasiolo (2017)

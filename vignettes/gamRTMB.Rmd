@@ -249,8 +249,11 @@ families("^norm$|^t2$|gamma2|zipois")
 ```
 
 `?gamRTMB` documents the fitting options, including `weights`, `offset()`
-terms inside a parameter's formula, `na.action`, and `method = "ML"` as an
-alternative to the default REML.
+terms inside a parameter's formula, and `na.action`.
 
 `vignette("gamlss", package = "gamRTMB")` fits three standard GAMLSS examples
 both ways, and compares the fits and the timings.
+
+`vignette("methods", package = "gamRTMB")` covers the `method` argument — REML,
+ML and approximate REML — including the models only the third of them can fit
+and what each of the other two stops reporting.
