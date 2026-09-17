@@ -1,8 +1,8 @@
 ---
-title: "gamRTMB and GAMLSS"
+title: "Comparison to GAMLSS"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{gamRTMB and GAMLSS}
+  %\VignetteIndexEntry{Comparison to GAMLSS}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
