@@ -302,6 +302,47 @@
   length(v) == 1L && is.finite(v)
 }
 
+#' The largest absolute outer gradient component, or `NA`
+#'
+#' `NA` rather than an error: a fit that stopped where the family cannot be
+#' differentiated has no gradient to report, and that is a diagnostic to hand
+#' back rather than a reason to lose the fit.
+#'
+#' @keywords internal
+.outer_grad <- function(obj, par)
+  if (!length(par)) 0 else
+    tryCatch(max(abs(obj$gr(par))), error = function(e) NA_real_)
+
+#' Whether the outer optimisation got there, by code or by gradient
+#'
+#' `nlminb`'s convergence code on its own is the wrong test on this criterion.
+#' The REML surface in the smoothing parameters has genuinely flat directions
+#' -- [.theta_bounds()] is the box that stops a fit walking down one -- and
+#' `nlminb` answers a flat minimum with `false convergence (8)` and a nonzero
+#' code however small the gradient it is sitting on. On `MASS::mcycle` with a
+#' t response and `sigma_frac = 0.001` it stops at `max|g| = 1.9e-04`, which
+#' is converged by any standard, and that fit was reported as a failure.
+#'
+#' So a nonzero code is forgiven when the outer gradient is small. The
+#' threshold is [.efs_defaults]'s `gtol`, so that the two engines mean the
+#' same thing by the word; if anything it is the stricter test here, since
+#' this gradient is exact where the Fellner-Schall one drops a
+#' third-derivative term.
+#'
+#' The converse is deliberately not done: a zero code is never overruled by a
+#' large gradient. `nlminb` reporting a relative reduction it cannot improve
+#' on is its own evidence, and on a criterion this flat the gradient is the
+#' weaker of the two signals.
+#'
+#' @param opt The `nlminb` result.
+#' @param max_grad Its largest absolute outer gradient component, from
+#'   [.outer_grad()].
+#' @return `TRUE` or `FALSE`.
+#' @keywords internal
+.outer_ok <- function(opt, max_grad)
+  isTRUE(opt$convergence == 0) ||
+    (is.finite(max_grad) && max_grad <= .efs_defaults$gtol)
+
 #' Label every coefficient the inner problem solves over
 #'
 #' In the order [RTMB::MakeADFun()] lays them out, which is the order of the
@@ -543,11 +584,17 @@
 #'   reaching for and what it costs.
 #' @param sigma_frac Tuning constant for the variance-component starting
 #'   values: each smooth starts contributing this fraction of its parameter's
-#'   linear-predictor scale. See [.init_pars()]. Raise it if a fit converges
-#'   to an over-smooth solution. If the objective is not finite here, a few
-#'   other values are tried automatically before giving up (see
-#'   [.sigma_frac_ladder]) and the one used is reported; passing this
-#'   argument explicitly does not switch that off, but passing `start` does.
+#'   linear-predictor scale. See [.init_pars()].
+#'
+#'   A few other values are tried automatically (see [.sigma_frac_ladder]),
+#'   in two places: when the objective is not finite here, and when the fit
+#'   runs but the smoothing parameters do not converge. The value finally used
+#'   is reported as `fit$sigma_frac_used` and named in a message. A retry
+#'   keeps whichever start reaches the lowest criterion, this one included, so
+#'   it can only improve the fit -- but it costs a refit each time, which on a
+#'   large model is the difference between seconds and minutes. Passing this
+#'   argument explicitly does not switch the retries off; passing `start`
+#'   does.
 #' @param sparse How to treat a smooth whose single penalty is already sparse
 #'   -- a Markov random field, a random walk, a supplied GMRF precision.
 #'   `"auto"` (default) keeps the penalty and gives the block a
@@ -650,7 +697,7 @@ gamRTMB <- function(formula, family = fam("norm"), data = NULL, weights = NULL,
     .fit_efs(nll, pars, design, family, silent, control)
   else
     .fit_laplace(nll, pars, design, method, joint_precision, silent,
-                 control, family, inner_control, repars)
+                 control, family, inner_control, repars, sigma_frac)
 
   ## Under "REML" the penalized Hessian over every coefficient is the Laplace
   ## approximation's own and comes off `obj` for free; under "aREML" the
@@ -739,13 +786,29 @@ gamRTMB <- function(formula, family = fam("norm"), data = NULL, weights = NULL,
 #' original starting values under the full cap, so the ladder can only add
 #' fits, never remove one.
 #'
+#' @section Finishing:
+#' That probe asks about the *start*, so it says nothing about a fit that
+#' starts cleanly and stalls later, which is the commoner failure. So the
+#' ladder is walked a second time when [.outer_ok()] says the outer
+#' optimisation did not get there, and the rungs already tried are skipped.
+#'
+#' The candidate kept is the one with the lowest criterion, the incumbent
+#' included, rather than the first that converges -- see the note in the code
+#' for the `MASS::mcycle` fit where those are 105 units of criterion apart in
+#' the wrong direction. Selecting that way cannot return a worse point than
+#' the one it was handed, and a retry that finds nothing better changes
+#' nothing but the time taken. The walk stops at the first candidate that both
+#' converges and leads, since the remaining rungs cost a full fit each.
+#'
 #' @param repars Function of a `sigma_frac` returning a fresh starting
 #'   parameter list, used to walk the ladder. `NULL` disables the retries.
+#' @param sigma_frac The `sigma_frac` `pars` was built at, so that the retries
+#'   do not spend a fit repeating it.
 #' @param inner_control Passed to [RTMB::MakeADFun()]'s `inner.control`.
 #' @keywords internal
 .fit_laplace <- function(nll, pars, design, method, joint_precision, silent,
                           control, family, inner_control = list(),
-                          repars = NULL) {
+                          repars = NULL, sigma_frac = NA_real_) {
   random <- if (method == "REML") c("beta", "b") else "b"
   map <- if (design$nsigma_free < design$nsigma)
     list(log_sigma = design$sig_group) else list()
@@ -835,32 +898,107 @@ gamRTMB <- function(formula, family = fam("norm"), data = NULL, weights = NULL,
   ## family's own derivatives break down, and it can happen after real
   ## progress has been made. TMB has kept the best point it saw, so the fit is
   ## returned from there and flagged as unconverged, rather than thrown away.
-  bnd <- .theta_bounds(design, used$log_sigma)
-  opt <- if (!length(obj$par))
-    list(par = obj$par, objective = obj$fn(obj$par), convergence = 0L,
-         message = "no smoothing parameters to estimate")
-  else tryCatch(
-    withCallingHandlers(
-      stats::nlminb(obj$par, obj$fn, obj$gr, control = ctl,
-                    lower = bnd$lower, upper = bnd$upper),
-      warning = function(w) {
-        if (grepl("NA/NaN function evaluation", conditionMessage(w)))
-          invokeRestart("muffleWarning")
-      }),
-    error = function(e) {
-      warning("the outer optimiser stopped early: ", conditionMessage(e),
-              ". The best point reached is returned, but the fit has not ",
-              "converged -- check `fit$convergence`, and treat the smoothing ",
-              "parameters and any standard errors with suspicion. This ",
-              "usually means a smoothing parameter ran into a region where ",
-              "family '", family$family, "' cannot be differentiated.",
-              call. = FALSE)
-      best <- obj$env$last.par.best
-      pf <- tryCatch(best[obj$env$lfixed()], error = function(e2) obj$par)
-      val <- obj$env$value.best
-      list(par = pf, convergence = 1L, message = conditionMessage(e),
-           objective = if (length(val) == 1L && is.finite(val)) val else NA_real_)
-    })
+  ## The complaint is carried on the result and raised once, for whichever
+  ## candidate below is finally selected, rather than per attempt.
+  optimise <- function(o, u) {
+    if (!length(o$par))
+      return(list(par = o$par, objective = o$fn(o$par), convergence = 0L,
+                  message = "no smoothing parameters to estimate"))
+    bnd <- .theta_bounds(design, u$log_sigma)
+    tryCatch(
+      withCallingHandlers(
+        stats::nlminb(o$par, o$fn, o$gr, control = ctl,
+                      lower = bnd$lower, upper = bnd$upper),
+        warning = function(w) {
+          if (grepl("NA/NaN function evaluation", conditionMessage(w)))
+            invokeRestart("muffleWarning")
+        }),
+      error = function(e) {
+        best <- o$env$last.par.best
+        pf <- tryCatch(best[o$env$lfixed()], error = function(e2) o$par)
+        val <- o$env$value.best
+        list(par = pf, convergence = 1L, message = conditionMessage(e),
+             stopped_early = conditionMessage(e),
+             objective = if (length(val) == 1L && is.finite(val)) val else
+               NA_real_)
+      })
+  }
+
+  opt <- optimise(obj, used)
+  mg <- .outer_grad(obj, opt$par)
+
+  ## Retry over the ladder when the outer optimisation did not get there.
+  ##
+  ## The probe above only asks whether the objective is finite at the *start*,
+  ## so it never fires for a fit that starts cleanly and stalls later -- which
+  ## is every hard fit measured: on `film90` with a JSU the default
+  ## `sigma_frac` is the only value in the set that fails, and the first rung
+  ## reaches a converged optimum 15 units of criterion better.
+  ##
+  ## Selection is on the criterion, never on which candidate converged first,
+  ## and the incumbent is in the running. That is not fastidiousness: on
+  ## `MASS::mcycle` with a t response the two rungs that *do* converge sit at
+  ## 685.4 and 685.9 where the unconverged incumbent sits at 579.9, so taking
+  ## a converged candidate on sight would trade a good fit for a badly
+  ## over-smoothed one. Selecting on the criterion cannot return a worse point
+  ## than it was given, only a better one, converged or not.
+  tried <- c(sigma_frac, attr(obj, "sigma_frac"))
+  rungs <- setdiff(.sigma_frac_ladder, tried)
+  if (!.outer_ok(opt, mg) && !is.null(repars) && length(obj$par) &&
+      length(rungs)) {
+    ## Said up front rather than only on success. Each rung is a full refit,
+    ## so on a large model this is minutes during which nothing else is
+    ## printed -- on the four-parameter `dbbmi` fit it is the difference
+    ## between four minutes and twelve, and that walk ends up finding nothing.
+    message("the outer optimisation did not converge; retrying from ",
+            length(rungs), " other variance-component start",
+            if (length(rungs) == 1) "" else "s",
+            " (sigma_frac = ", paste(rungs, collapse = ", "),
+            "), keeping whichever reaches the lowest criterion. Each is a ",
+            "full refit; pass `start` to switch this off.")
+    best <- list(obj = obj, used = used, opt = opt, mg = mg,
+                 frac = attr(obj, "sigma_frac"), moved = FALSE)
+    for (fr in rungs) {
+      cp <- tryCatch(repars(fr), error = function(e) NULL)
+      cand <- if (is.null(cp)) NULL else
+        tryCatch(build(cp), error = function(e) NULL)
+      if (is.null(cand) || !.probe_finite(cand)) next
+      o <- tryCatch(optimise(cand, cp), error = function(e) NULL)
+      if (is.null(o)) next
+      g <- .outer_grad(cand, o$par)
+      better <- is.finite(o$objective) &&
+        (!is.finite(best$opt$objective) || o$objective < best$opt$objective)
+      if (better)
+        best <- list(obj = cand, used = cp, opt = o, mg = g, frac = fr,
+                     moved = TRUE)
+      ## A candidate that converged and is the best seen is where to stop.
+      ## The remaining rungs cost a full fit each and have no better claim,
+      ## and on the large models that is minutes rather than seconds.
+      if (better && .outer_ok(o, g)) break
+    }
+    if (best$moved) {
+      message("sigma_frac = ", best$frac, " reached a lower criterion",
+              if (.outer_ok(best$opt, best$mg)) " and converged; "
+              else ", though it did not converge either; ",
+              "that is the fit returned. Pass sigma_frac explicitly to pin ",
+              "this down.")
+      obj <- best$obj; used <- best$used; opt <- best$opt; mg <- best$mg
+      attr(obj, "sigma_frac") <- best$frac
+    } else {
+      message("none of them improved on the original, which is returned as ",
+              "it was. See ?gamRTMB on `start`, `k` and `method = \"aREML\"`.")
+    }
+  }
+
+  if (!is.null(opt$stopped_early))
+    warning("the outer optimiser stopped early: ", opt$stopped_early,
+            ". The best point reached is returned, but the fit has not ",
+            "converged -- check `fit$convergence`, and treat the smoothing ",
+            "parameters and any standard errors with suspicion. This ",
+            "usually means a smoothing parameter ran into a region where ",
+            "family '", family$family, "' cannot be differentiated.",
+            call. = FALSE)
+
   sdr <- RTMB::sdreport(obj, getJointPrecision = joint_precision)
 
   pl <- obj$env$parList(par = obj$env$last.par.best)
@@ -869,8 +1007,7 @@ gamRTMB <- function(formula, family = fam("norm"), data = NULL, weights = NULL,
        coefficients = list(beta = pl$beta, b = pl$b),
        log_sigma = pl$log_sigma,               # full length, not the mapped one
        objective = opt$objective,
-       convergence = opt$convergence == 0,
-       max_grad = if (!length(obj$par)) 0 else
-         tryCatch(max(abs(obj$gr(opt$par))), error = function(e) NA_real_))
+       convergence = .outer_ok(opt, mg),
+       max_grad = mg)
 }
 

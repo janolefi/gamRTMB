@@ -180,3 +180,88 @@ test_that("summary says the EDF are undefined rather than printing a total", {
   expect_match(ok, "Total EDF")
   expect_match(ok, "AIC")
 })
+
+## ---------------------------------------------------------------------------
+## Finishing: the convergence test, and the ladder walked a second time when
+## the outer optimisation stalls rather than when the start is unusable.
+
+test_that("a flat minimum nlminb calls false convergence is still converged", {
+  ## nlminb answers a flat minimum with a nonzero code however small the
+  ## gradient, which used to be reported as a failed fit.
+  expect_true(.outer_ok(list(convergence = 1L), 1.86e-04))
+  expect_false(.outer_ok(list(convergence = 1L), 5.95))
+  ## the threshold is the EFS engine's, so the two mean the same thing
+  expect_true(.outer_ok(list(convergence = 1L), .efs_defaults$gtol))
+  expect_false(.outer_ok(list(convergence = 1L), .efs_defaults$gtol * 1.01))
+  ## a zero code is never overruled by a large gradient, and NA is not small
+  expect_true(.outer_ok(list(convergence = 0L), 1e6))
+  expect_false(.outer_ok(list(convergence = 1L), NA_real_))
+})
+
+test_that(".outer_grad reports rather than throws", {
+  d <- sim_ls()
+  fit <- gamRTMB(y ~ list(mean = ~ s(x1, k = 8)), data = d)
+  expect_equal(.outer_grad(fit$obj, fit$opt$par), fit$max_grad)
+  ## no smoothing parameters to be stationary in
+  expect_equal(.outer_grad(fit$obj, numeric(0)), 0)
+  ## a gradient that cannot be evaluated is a diagnostic, not a lost fit
+  expect_true(is.na(.outer_grad(list(gr = function(p) stop("nope")), 1)))
+})
+
+test_that("a stalled fit is retried over the ladder, and improves", {
+  ## film90 with a JSU: the default sigma_frac is the only value in the set
+  ## that fails, and the first rung reaches a converged optimum. The start is
+  ## perfectly finite here, so the probe never fires -- this is the second
+  ## walk, driven by the outer optimisation rather than by the start.
+  skip_on_cran()
+  skip_if_not_installed("gamlss.data")
+  film90 <- gamlss.data::film90
+  fo <- lborev1 ~ list(mu = ~ s(lboopen, k = 20), sigma = ~ s(lboopen, k = 20),
+                       nu = ~ 1, tau = ~ 1)
+  said <- character(0)
+  fit <- withCallingHandlers(
+    gamRTMB(fo, family = fam("jsu2"), data = film90),
+    message = function(m) {
+      said <<- c(said, conditionMessage(m)); invokeRestart("muffleMessage")
+    })
+  ## the first message only fires when the fit as it stood had not converged,
+  ## and the second only when a rung beat it -- which together are the claim
+  expect_match(said[1], "the outer optimisation did not converge; retrying")
+  expect_match(said[2], "reached a lower criterion and converged")
+  expect_true(fit$convergence)
+  expect_equal(fit$sigma_frac_used, 0.005)
+  expect_lt(fit$max_grad, .efs_defaults$gtol)
+})
+
+test_that("the retry selects on the criterion, not on which rung converged", {
+  ## MASS::mcycle with a t response is the case that decides the rule: the two
+  ## rungs that converge sit at 685.4 and 685.9 where the unconverged
+  ## incumbent sits at 579.9, so a retry that took a converged candidate on
+  ## sight would trade a good fit for a badly over-smoothed one.
+  skip_on_cran()
+  skip_if_not_installed("MASS")
+  mcycle <- MASS::mcycle
+  fo <- accel ~ list(mu = ~ s(times, k = 20), sigma = ~ s(times, k = 10),
+                     df = ~ 1)
+  fit <- suppressMessages(gamRTMB(fo, family = fam("t2"), data = mcycle))
+  ## it did not take either converged-but-worse rung
+  expect_false(fit$sigma_frac_used %in% c(0.005, 0.001))
+  expect_lt(fit$objective, 600)
+  ## an honest flag: the best point found is still not a stationary one
+  expect_false(fit$convergence)
+})
+
+test_that("a start the user supplied switches the retry off too", {
+  ## Same guard as the probe's ladder: `repars` is NULL, so there is nothing
+  ## to walk to and the fit is returned as it came out.
+  skip_on_cran()
+  skip_if_not_installed("MASS")
+  mcycle <- MASS::mcycle
+  fo <- accel ~ list(mu = ~ s(times, k = 20), sigma = ~ s(times, k = 10),
+                     df = ~ 1)
+  free <- suppressMessages(gamRTMB(fo, family = fam("t2"), data = mcycle))
+  pinned <- suppressWarnings(gamRTMB(fo, family = fam("t2"), data = mcycle,
+                                     start = list(log_sigma = free$obj$env$par[
+                                       names(free$obj$env$par) == "log_sigma"])))
+  expect_null(pinned$sigma_frac_used)
+})
