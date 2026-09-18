@@ -14,7 +14,7 @@
 #' @return `list(H, i_beta, i_b)`, or `NULL` when the fit did not form it.
 #' @keywords internal
 .penalized_hessian <- function(fit) {
-  ## "aREML" and "ML" both carry this matrix on the fit, in the parameter
+  ## "qREML" and "ML" both carry this matrix on the fit, in the parameter
   ## list's own ordering -- `beta` then `b`, which is the ordering this
   ## function promises. The EFS engine forms it as part of the fit;
   ## [.coef_hessian()] tapes it for "ML", where `beta` is not in the random
@@ -53,7 +53,7 @@
   if (is.null(h)) return(NA)
   ## The stored values, not `as.numeric(h)`: the latter expands a sparse
   ## matrix to a dense vector, and this is asked once per outer iteration by
-  ## method = "aREML".
+  ## method = "qREML".
   x <- if (methods::is(h, "sparseMatrix")) h@x else as.numeric(h)
   if (anyNA(x)) return(NA)
   !inherits(tryCatch(Matrix::chol(h), error = function(e) e,
@@ -215,7 +215,7 @@ edf.gamRTMB <- function(object, ...) {
 #'
 #' The `(beta, b)` block of the inverse joint precision, which includes the
 #' uncertainty in the smoothing parameters (mgcv's `unconditional = TRUE`) --
-#' under `method = "REML"` or `"ML"`. `"aREML"` has no joint precision and
+#' under `method = "REML"` or `"ML"`. `"qREML"` has no joint precision and
 #' returns the inverse penalized Hessian, which conditions on the smoothing
 #' parameters instead; see the branch at the top of the function and
 #' [vcov.gamRTMB()].
@@ -252,14 +252,14 @@ edf.gamRTMB <- function(object, ...) {
 #'   the `beta` and `b` entries within it.
 #' @keywords internal
 .joint_cov <- function(fit) {
-  ## "aREML" never builds an `sdreport`, and could not fill this in from one
+  ## "qREML" never builds an `sdreport`, and could not fill this in from one
   ## if it did: the joint precision's smoothing-parameter block comes from
   ## differentiating the marginal criterion twice, which is the term
   ## Fellner-Schall exists to avoid. What it has is the penalized Hessian,
   ## whose inverse is the covariance *conditional* on the fitted smoothing
   ## parameters -- mgcv's `unconditional = FALSE`. Intervals from it are a
   ## little too narrow for the same reason mgcv's conditional ones are.
-  if (identical(fit$method, "aREML")) {
+  if (identical(fit$method, "qREML")) {
     ph <- .penalized_hessian(fit)
     if (is.null(ph))
       stop("this fit did not keep its penalized Hessian, so the coefficient ",
@@ -296,7 +296,7 @@ edf.gamRTMB <- function(object, ...) {
          "in the ", paste(bad, collapse = " and "), " block",
          if (length(bad) > 1L) "s" else "", "). This is what a fit that did ",
          "not converge looks like here -- check `max_grad`, which should be ",
-         "small -- rather than anything about the data. method = \"aREML\" ",
+         "small -- rather than anything about the data. method = \"qREML\" ",
          "gets a usable covariance from the penalized Hessian instead, and ",
          "often converges where the Laplace engine does not.", call. = FALSE)
   }

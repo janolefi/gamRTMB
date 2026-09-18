@@ -1,10 +1,10 @@
-## method = "aREML" against method = "REML": criterion, effective degrees of
+## method = "qREML" against method = "REML": criterion, effective degrees of
 ## freedom and time, on models where both run, plus one where only one does.
 ##
 ## Usage: Rscript dev/bench-efs.R    (a few minutes)
 ##
 ## The point is not to declare a winner. The two optimise the same criterion,
-## and aREML drops a third-derivative term from the *gradient* but not from
+## and qREML drops a third-derivative term from the *gradient* but not from
 ## the criterion itself, so the question is how far short of the REML optimum
 ## it stops and what it buys for that.
 
@@ -17,7 +17,7 @@ quiet <- function(expr)
 
 run <- function(label, f, family, data) {
   out <- list()
-  for (eng in c("REML", "aREML")) {
+  for (eng in c("REML", "qREML")) {
     tt <- system.time(fit <- quiet(gamRTMB(f, family = family, data = data,
                                            method = eng)))
     out[[eng]] <- if (inherits(fit, "bench_error"))
@@ -43,11 +43,11 @@ run <- function(label, f, family, data) {
   if (all(vapply(out, `[[`, NA, "ok"))) {
     both_edf <- !vapply(out, function(r) inherits(r$edf, "bench_error"), NA)
     cat(sprintf("  %-8s dV %+.4f   %s   speed %.2fx\n", "delta",
-                out$aREML$V - out$REML$V,
+                out$qREML$V - out$REML$V,
                 if (all(both_edf))
-                  sprintf("dEDF %+.3f", sum(out$aREML$edf$edf) - sum(out$REML$edf$edf))
+                  sprintf("dEDF %+.3f", sum(out$qREML$edf$edf) - sum(out$REML$edf$edf))
                 else "dEDF     n/a",
-                out$REML$t / out$aREML$t))
+                out$REML$t / out$qREML$t))
   }
   invisible(out)
 }

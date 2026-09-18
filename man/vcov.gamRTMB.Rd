@@ -22,7 +22,7 @@ rather than conditioning on them (mgcv's \code{unconditional = TRUE}). Needs a
 fit made with \code{joint_precision = TRUE}, which is the default.
 }
 \details{
-\strong{Under \code{method = "aREML"} it is conditional instead} -- mgcv's
+\strong{Under \code{method = "qREML"} it is conditional instead} -- mgcv's
 \code{unconditional = FALSE} -- and so a little too narrow. There is no joint
 precision to take a block of: its smoothing-parameter part comes from
 differentiating the marginal criterion twice in the smoothing parameters,

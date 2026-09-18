@@ -39,14 +39,15 @@ their normalising constants, so
       \tfrac{p}{2}\log 2\pi}
 over all \code{p} of \verb{(beta, b)} -- the same set \code{method = "REML"} puts in
 \verb{random =}, and therefore the same criterion, which is why the two report
-comparable numbers and why this one is called approximate \emph{REML}.
+comparable numbers and why this one is called quasi-\emph{REML} rather than
+something that does not name REML at all.
 
 There is deliberately no \code{"ML"} counterpart. It would be approximate twice
 over -- the Fellner-Schall gradient drops a term, and profiling the
 unpenalized coefficients at the penalized likelihood's mode rather than at
 the maximiser of \eqn{V} would drop another -- and it measured ten times
-further from the Laplace engine's answer than \code{"aREML"} does from
-\code{"REML"}'s. Approximate REML is a criterion people ask for; approximate ML
+further from the Laplace engine's answer than \code{"qREML"} does from
+\code{"REML"}'s. A quasi-REML is a criterion people ask for; a quasi-ML
 with a second approximation inside it is not.
 }
 

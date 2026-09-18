@@ -92,7 +92,7 @@ else are in `vignette("gamRTMB")`.
 | Formula | `y ~ list(mean = ~ s(x), sd = ~ s(z))`, one one-sided formula per parameter, missing ones get `~1` |
 | Smooths | `s()`, `te()`, `ti()`, `t2()`, `by=`, `bs="fs"`, `bs="re"`, `bs="ad"`, shrinkage bases, and `id=` to share smoothing parameters |
 | Spatial | `bs="mrf"` Markov random fields over an adjacency graph, or any precision matrix via `xt=list(penalty=)`; `bs="spde"` Matern fields on an [fmesher](https://cran.r-project.org/package=fmesher) mesh. Both kept sparse, so a few thousand regions or mesh nodes is routine |
-| Criterion | `REML` by default (coefficients integrated out by the same Laplace approximation), `ML`, or `aREML` — the REML criterion optimised by extended Fellner–Schall, which fits four-parameter families the other two cannot start |
+| Criterion | `REML` by default (coefficients integrated out by the same Laplace approximation), `ML`, or `qREML` — the REML criterion optimised by extended Fellner–Schall, which fits four-parameter families the other two cannot start |
 | Inference | `summary()`, `vcov()`, `edf()`, `AIC()`/`BIC()`, `predict()` with standard errors |
 | Diagnostics | `residuals()` gives randomised quantile residuals; `plot(type = "worm")` |
 | Also | `weights`, `offset()` inside a parameter’s formula, `na.action` |

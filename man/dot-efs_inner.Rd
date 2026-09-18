@@ -17,7 +17,7 @@ wants them.}
 \description{
 Maximises the penalized log-likelihood over \verb{c = (beta, b)} with
 \code{log_sigma} held where the caller left it. Both are solved for, and both
-are then integrated out by the criterion: \code{"aREML"} is the REML criterion,
+are then integrated out by the criterion: \code{"qREML"} is the REML criterion,
 so the mean-structure coefficients are random here exactly as they are
 under \code{"REML"}.
 }

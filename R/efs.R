@@ -1,4 +1,4 @@
-## method = "aREML": the REML criterion optimised by extended Fellner-Schall
+## method = "qREML": the REML criterion optimised by extended Fellner-Schall
 ## rather than by handing the smoothing parameters to nlminb. The reason it is
 ## a separate fitting routine rather than an optimiser setting is in
 ## dev/NOTES-fellner-schall.md: the REML outer gradient differentiates log|H|
@@ -276,7 +276,7 @@
 #'
 #' Maximises the penalized log-likelihood over `c = (beta, b)` with
 #' `log_sigma` held where the caller left it. Both are solved for, and both
-#' are then integrated out by the criterion: `"aREML"` is the REML criterion,
+#' are then integrated out by the criterion: `"qREML"` is the REML criterion,
 #' so the mean-structure coefficients are random here exactly as they are
 #' under `"REML"`.
 #'
@@ -664,14 +664,15 @@
 #'       \tfrac{p}{2}\log 2\pi}
 #' over all `p` of `(beta, b)` -- the same set `method = "REML"` puts in
 #' `random =`, and therefore the same criterion, which is why the two report
-#' comparable numbers and why this one is called approximate *REML*.
+#' comparable numbers and why this one is called quasi-*REML* rather than
+#' something that does not name REML at all.
 #'
 #' There is deliberately no `"ML"` counterpart. It would be approximate twice
 #' over -- the Fellner-Schall gradient drops a term, and profiling the
 #' unpenalized coefficients at the penalized likelihood's mode rather than at
 #' the maximiser of \eqn{V} would drop another -- and it measured ten times
-#' further from the Laplace engine's answer than `"aREML"` does from
-#' `"REML"`'s. Approximate REML is a criterion people ask for; approximate ML
+#' further from the Laplace engine's answer than `"qREML"` does from
+#' `"REML"`'s. A quasi-REML is a criterion people ask for; a quasi-ML
 #' with a second approximation inside it is not.
 #'
 #' @section What is dropped, and what it costs:
@@ -713,7 +714,7 @@
                else as.integer(ctl$trace)
   nbeta <- design$nbeta; nb <- design$nb
   ib <- nbeta + seq_len(nb)
-  ## Every coefficient is integrated out -- "aREML" is the REML criterion,
+  ## Every coefficient is integrated out -- "qREML" is the REML criterion,
   ## which is what `method = "REML"` puts in `random =` too -- so the matrix
   ## the log determinant needs is the whole penalized Hessian, with no
   ## sub-block to take.
@@ -839,7 +840,7 @@
 
   cur <- evaluate(rho, p)
   if (is.null(cur))
-    stop("the aREML criterion is not finite at the starting values: the ",
+    stop("the qREML criterion is not finite at the starting values: the ",
          "inner problem did not reach a usable mode. Try a different ",
          "sigma_frac, or start = list(beta = ...).", call. = FALSE)
 

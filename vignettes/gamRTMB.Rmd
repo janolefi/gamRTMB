@@ -255,5 +255,5 @@ terms inside a parameter's formula, and `na.action`.
 both ways, and compares the fits and the timings.
 
 `vignette("methods", package = "gamRTMB")` covers the `method` argument — REML,
-ML and approximate REML — including the models only the third of them can fit
+ML and quasi-REML — including the models only the third of them can fit
 and what each of the other two stops reporting.

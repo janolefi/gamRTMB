@@ -14,7 +14,7 @@ gamRTMB(
   weights = NULL,
   na.action = stats::na.omit,
   knots = NULL,
-  method = c("REML", "ML", "aREML"),
+  method = c("REML", "ML", "qREML"),
   sigma_frac = 0.05,
   sparse = c("auto", "never", "always"),
   joint_precision = TRUE,
@@ -51,7 +51,7 @@ many in the fit's summary.}
 \item{knots}{Passed to \code{\link[mgcv:smoothCon]{mgcv::smoothCon()}}.}
 
 \item{method}{Smoothness selection criterion: \code{"REML"} (default), \code{"ML"},
-or \code{"aREML"} for approximate REML by extended Fellner-Schall. See the
+or \code{"qREML"} for quasi-REML by extended Fellner-Schall. See the
 Smoothness selection section, which says when the third is worth
 reaching for and what it costs.}
 
@@ -87,7 +87,7 @@ wanted.}
 parameter list (\code{beta}, \code{b}, \code{log_sigma}).}
 
 \item{silent}{Under \code{"REML"} and \code{"ML"}, passed to \code{\link[RTMB:TMB-interface]{RTMB::MakeADFun()}}.
-Under \code{"aREML"} there is no such object, so it means the same thing
+Under \code{"qREML"} there is no such object, so it means the same thing
 directly: \code{silent = FALSE} prints one line per outer iteration -- the
 criterion, its change, the largest Fellner-Schall gradient component, the
 accepted step length and the smoothing parameters on the scale \code{\link[=edf]{edf()}}
@@ -101,7 +101,7 @@ to its iteration cap looks identical from outside to a fit that has
 hung. \code{control = list(trace = )} overrides \code{silent} either way.}
 
 \item{control}{Under \code{"REML"} and \code{"ML"}, passed to \code{\link[stats:nlminb]{stats::nlminb()}}.
-Under \code{"aREML"}, merged onto \link{.efs_defaults}: \code{maxit}, \code{tol}, \code{gtol},
+Under \code{"qREML"}, merged onto \link{.efs_defaults}: \code{maxit}, \code{tol}, \code{gtol},
 \code{max_step}, \code{max_halve}, \code{stall_tol}, \code{trace} (0 silent, 1 outer
 iterations, 2 inner as well), and \code{inner_method}. The last is \code{"bfgs"} by
 default, which is what makes the harder four-parameter families fit at
@@ -197,7 +197,7 @@ likelihood of the penalized coefficients alone. Two REML fits whose
 unpenalized structure differs are not comparable on their criterion; two ML
 fits are.
 
-\code{"aREML"} is \strong{approximate REML}: the same criterion as \code{"REML"},
+\code{"qREML"} is \strong{quasi-REML}: the same criterion as \code{"REML"},
 optimised by the extended Fellner-Schall method of Wood & Fasiolo (2017)
 rather than by handing the smoothing parameters to \code{nlminb}. The two agree
 closely -- over the models in \code{dev/bench-efs.R}, within a few thousandths
@@ -211,10 +211,10 @@ log-likelihood in the coefficients: the expensive term, in both time and
 tape memory, and the one that requires the inner Hessian to be positive
 definite. Fellner-Schall drops exactly that term and replaces the gradient
 step with a multiplicative update. For the saving to be real nothing may be
-declared random, so \code{"aREML"} owns its own inner solve as well as the outer
+declared random, so \code{"qREML"} owns its own inner solve as well as the outer
 update; see \code{\link[=.fit_efs]{.fit_efs()}}.
 
-\strong{What \code{"aREML"} is for} is models \code{"REML"} cannot fit at all. It never
+\strong{What \code{"qREML"} is for} is models \code{"REML"} cannot fit at all. It never
 needs the inner Hessian to be positive definite -- it repairs the data
 Hessian instead -- and that is where \code{"REML"} fails outright on the harder
 four-parameter families, \code{bcpe} and its relatives. On those it is the only

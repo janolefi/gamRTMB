@@ -6,14 +6,14 @@ print.gamRTMB <- function(x, ...) {
       paste(sprintf("%s/%s", x$family$parnames, x$family$links), collapse = ", "),
       ")\n", sep = "")
   cat("  criterion: ", x$method,
-      if (identical(x$method, "aREML")) "  (extended Fellner-Schall)" else "",
+      if (identical(x$method, "qREML")) "  (extended Fellner-Schall)" else "",
       "\n", sep = "")
   ## The Fellner-Schall gradient drops a third-derivative term and so does not
   ## reach zero at the optimum; naming it differently keeps it from being read
   ## as a stationarity measure. See [.fit_efs()].
   cat("  converged: ", x$convergence, "   -", .criterion_label(x$method), ": ",
       sprintf("%.4f", x$objective),
-      if (identical(x$method, "aREML")) "   max|FS grad|: "
+      if (identical(x$method, "qREML")) "   max|FS grad|: "
       else "   max|grad|: ",
       sprintf("%.3g", x$max_grad), "\n", sep = "")
   if (!isTRUE(x$convergence) && nzchar(.or_else(x$opt$message, "")))
@@ -40,7 +40,7 @@ print.gamRTMB <- function(x, ...) {
 
 #' What to call the reported criterion value
 #'
-#' `"aREML"` optimises the REML criterion -- the approximation is in the
+#' `"qREML"` optimises the REML criterion -- the approximation is in the
 #' gradient, not in the quantity -- so its value is a REML value and is
 #' directly comparable with one from `method = "REML"`. The header line says
 #' which route produced it, so labelling the number for what it is costs no
@@ -48,7 +48,7 @@ print.gamRTMB <- function(x, ...) {
 #'
 #' @keywords internal
 .criterion_label <- function(method)
-  if (identical(method, "aREML")) "REML" else method
+  if (identical(method, "qREML")) "REML" else method
 
 #' Labels for the fixed-effect coefficients
 #'
@@ -67,7 +67,7 @@ print.gamRTMB <- function(x, ...) {
 #' rather than conditioning on them (mgcv's `unconditional = TRUE`). Needs a
 #' fit made with `joint_precision = TRUE`, which is the default.
 #'
-#' \strong{Under `method = "aREML"` it is conditional instead} -- mgcv's
+#' \strong{Under `method = "qREML"` it is conditional instead} -- mgcv's
 #' `unconditional = FALSE` -- and so a little too narrow. There is no joint
 #' precision to take a block of: its smoothing-parameter part comes from
 #' differentiating the marginal criterion twice in the smoothing parameters,

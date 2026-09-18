@@ -382,7 +382,7 @@
 #'
 #' @param obj The `MakeADFun` object, evaluated at its starting values.
 #' @param design The design object.
-#' @param method `"REML"`, `"ML"` or `"aREML"`.
+#' @param method `"REML"`, `"ML"` or `"qREML"`.
 #' @param famname The family's name, for the message.
 #' @return A sentence describing the negative curvature, or `NULL` if the
 #'   Hessian is unavailable or positive definite.
@@ -522,7 +522,7 @@
 #' unpenalized structure differs are not comparable on their criterion; two ML
 #' fits are.
 #'
-#' `"aREML"` is **approximate REML**: the same criterion as `"REML"`,
+#' `"qREML"` is **quasi-REML**: the same criterion as `"REML"`,
 #' optimised by the extended Fellner-Schall method of Wood & Fasiolo (2017)
 #' rather than by handing the smoothing parameters to `nlminb`. The two agree
 #' closely -- over the models in `dev/bench-efs.R`, within a few thousandths
@@ -536,10 +536,10 @@
 #' tape memory, and the one that requires the inner Hessian to be positive
 #' definite. Fellner-Schall drops exactly that term and replaces the gradient
 #' step with a multiplicative update. For the saving to be real nothing may be
-#' declared random, so `"aREML"` owns its own inner solve as well as the outer
+#' declared random, so `"qREML"` owns its own inner solve as well as the outer
 #' update; see [.fit_efs()].
 #'
-#' **What `"aREML"` is for** is models `"REML"` cannot fit at all. It never
+#' **What `"qREML"` is for** is models `"REML"` cannot fit at all. It never
 #' needs the inner Hessian to be positive definite -- it repairs the data
 #' Hessian instead -- and that is where `"REML"` fails outright on the harder
 #' four-parameter families, `bcpe` and its relatives. On those it is the only
@@ -579,7 +579,7 @@
 #'   many in the fit's summary.
 #' @param knots Passed to [mgcv::smoothCon()].
 #' @param method Smoothness selection criterion: `"REML"` (default), `"ML"`,
-#'   or `"aREML"` for approximate REML by extended Fellner-Schall. See the
+#'   or `"qREML"` for quasi-REML by extended Fellner-Schall. See the
 #'   Smoothness selection section, which says when the third is worth
 #'   reaching for and what it costs.
 #' @param sigma_frac Tuning constant for the variance-component starting
@@ -610,7 +610,7 @@
 #' @param start Optional named list overriding entries of the starting
 #'   parameter list (`beta`, `b`, `log_sigma`).
 #' @param silent Under `"REML"` and `"ML"`, passed to [RTMB::MakeADFun()].
-#'   Under `"aREML"` there is no such object, so it means the same thing
+#'   Under `"qREML"` there is no such object, so it means the same thing
 #'   directly: `silent = FALSE` prints one line per outer iteration -- the
 #'   criterion, its change, the largest Fellner-Schall gradient component, the
 #'   accepted step length and the smoothing parameters on the scale [edf()]
@@ -623,7 +623,7 @@
 #'   to its iteration cap looks identical from outside to a fit that has
 #'   hung. `control = list(trace = )` overrides `silent` either way.
 #' @param control Under `"REML"` and `"ML"`, passed to [stats::nlminb()].
-#'   Under `"aREML"`, merged onto [.efs_defaults]: `maxit`, `tol`, `gtol`,
+#'   Under `"qREML"`, merged onto [.efs_defaults]: `maxit`, `tol`, `gtol`,
 #'   `max_step`, `max_halve`, `stall_tol`, `trace` (0 silent, 1 outer
 #'   iterations, 2 inner as well), and `inner_method`. The last is `"bfgs"` by
 #'   default, which is what makes the harder four-parameter families fit at
@@ -651,7 +651,7 @@
 #' @export
 gamRTMB <- function(formula, family = fam("norm"), data = NULL, weights = NULL,
                     na.action = stats::na.omit, knots = NULL,
-                    method = c("REML", "ML", "aREML"), sigma_frac = 0.05,
+                    method = c("REML", "ML", "qREML"), sigma_frac = 0.05,
                     sparse = c("auto", "never", "always"),
                     joint_precision = TRUE, start = NULL, silent = TRUE,
                     control = list(), inner_control = list()) {
@@ -681,8 +681,8 @@ gamRTMB <- function(formula, family = fam("norm"), data = NULL, weights = NULL,
   ## the coefficients, so the priors' normalising constants are constants of
   ## its inner problem; it adds them back once per outer step. See
   ## [.prior_const()].
-  nll <- .make_nll(design, family, y, fx, w, obs = method != "aREML",
-                   prior_const = method != "aREML")
+  nll <- .make_nll(design, family, y, fx, w, obs = method != "qREML",
+                   prior_const = method != "qREML")
 
   ## The ladder needs to be able to rebuild the starting values at another
   ## `sigma_frac`; an explicit `start` is the user's and is never overwritten,
@@ -691,16 +691,16 @@ gamRTMB <- function(formula, family = fam("norm"), data = NULL, weights = NULL,
     function(frac) .init_pars(design, family, y, frac, NULL) else NULL
 
   ## The two fitting routines are an implementation detail of `method`: the
-  ## criterion "aREML" is the REML one optimised by extended Fellner-Schall,
+  ## criterion "qREML" is the REML one optimised by extended Fellner-Schall,
   ## so it is not a separate axis the user has to cross with anything.
-  fit <- if (method == "aREML")
+  fit <- if (method == "qREML")
     .fit_efs(nll, pars, design, family, silent, control)
   else
     .fit_laplace(nll, pars, design, method, joint_precision, silent,
                  control, family, inner_control, repars, sigma_frac)
 
   ## Under "REML" the penalized Hessian over every coefficient is the Laplace
-  ## approximation's own and comes off `obj` for free; under "aREML" the
+  ## approximation's own and comes off `obj` for free; under "qREML" the
   ## engine forms it itself. "ML" is the case that has to be asked for, and
   ## [.coef_hessian()] says why it cannot be read off the fitted object.
   if (method == "ML")
@@ -986,7 +986,7 @@ gamRTMB <- function(formula, family = fam("norm"), data = NULL, weights = NULL,
       attr(obj, "sigma_frac") <- best$frac
     } else {
       message("none of them improved on the original, which is returned as ",
-              "it was. See ?gamRTMB on `start`, `k` and `method = \"aREML\"`.")
+              "it was. See ?gamRTMB on `start`, `k` and `method = \"qREML\"`.")
     }
   }
 

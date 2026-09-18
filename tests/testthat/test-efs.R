@@ -1,6 +1,6 @@
-## method = "aREML": the REML criterion optimised by extended Fellner-Schall.
+## method = "qREML": the REML criterion optimised by extended Fellner-Schall.
 ## Its correctness check is method = "REML", which optimises the same
-## criterion by a different route -- aREML drops a third-derivative term from
+## criterion by a different route -- qREML drops a third-derivative term from
 ## the gradient but not from the criterion itself, so the two should agree
 ## closely rather than exactly.
 
@@ -116,11 +116,11 @@ test_that("a smooth with an L matrix is classified as tied, an ordinary one is n
   expect_true(all(.efs_pairs(Ds)$tied))
 })
 
-test_that("aREML matches REML on a location-scale model", {
+test_that("qREML matches REML on a location-scale model", {
   d <- sim_efs(300)
   f <- y ~ list(mean = ~ s(x1, k = 10), sd = ~ s(x2, k = 8))
   a <- gamRTMB(f, data = d)
-  b <- gamRTMB(f, data = d, method = "aREML")
+  b <- gamRTMB(f, data = d, method = "qREML")
   expect_true(b$convergence)
   expect_equal(b$objective, a$objective, tolerance = 1e-4)
   expect_equal(edf(b)$edf, edf(a)$edf, tolerance = 1e-2)
@@ -131,11 +131,11 @@ test_that("aREML matches REML on a location-scale model", {
   expect_length(b$log_sigma, b$design$nsigma)
 })
 
-test_that("aREML matches REML with an id-tied smoothing parameter", {
+test_that("qREML matches REML with an id-tied smoothing parameter", {
   d <- sim_efs(300)
   f <- y ~ list(mean = ~ s(x1, k = 8, id = 1) + s(x2, k = 8, id = 1))
   a <- gamRTMB(f, data = d)
-  b <- gamRTMB(f, data = d, method = "aREML")
+  b <- gamRTMB(f, data = d, method = "qREML")
   expect_true(b$convergence)
   expect_equal(b$objective, a$objective, tolerance = 1e-4)
   ## one estimated value, expanded back over both blocks
@@ -144,7 +144,7 @@ test_that("aREML matches REML with an id-tied smoothing parameter", {
   expect_equal(edf(b)$edf, edf(a)$edf, tolerance = 1e-2)
 })
 
-test_that("aREML handles a sparse GMRF block, which needs the general trace", {
+test_that("qREML handles a sparse GMRF block, which needs the general trace", {
   nb <- lattice_nb_efs(8)
   ids <- names(nb)
   ij <- do.call(rbind, lapply(strsplit(ids, "_"), as.numeric))
@@ -154,7 +154,7 @@ test_that("aREML handles a sparse GMRF block, which needs the general trace", {
   d$y <- stats::rnorm(nrow(d), sin(ij[k, 1] / 2) + cos(ij[k, 2] / 2), 0.4)
   f <- y ~ list(mean = ~ s(reg, bs = "mrf", xt = list(nb = nb)), sd = ~ 1)
   a <- gamRTMB(f, data = d)
-  b <- gamRTMB(f, data = d, method = "aREML")
+  b <- gamRTMB(f, data = d, method = "qREML")
   expect_equal(b$design$blocks[[1]]$kind, "multi")
   ## a lone sparse penalty is that block with L = [-2] and one matrix
   expect_equal(b$design$blocks[[1]]$L, matrix(-2, 1L, 1L))
@@ -166,7 +166,7 @@ test_that("aREML handles a sparse GMRF block, which needs the general trace", {
 
 test_that("a model with no smooths needs no outer iteration", {
   d <- sim_efs(200)
-  b <- gamRTMB(y ~ list(mean = ~ x1), data = d, method = "aREML")
+  b <- gamRTMB(y ~ list(mean = ~ x1), data = d, method = "qREML")
   expect_true(b$convergence)
   expect_equal(b$max_grad, 0)
   expect_equal(b$opt$message, "no smoothing parameters to estimate")
@@ -177,17 +177,17 @@ test_that("a model with no smooths needs no outer iteration", {
 test_that("the criterion never rises: the step control does its job", {
   d <- sim_efs(300)
   b <- gamRTMB(y ~ list(mean = ~ s(x1, k = 10), sd = ~ s(x2, k = 8)),
-               data = d, method = "aREML")
+               data = d, method = "qREML")
   V <- b$efs_trace$V
   expect_gt(length(V), 1L)
   expect_true(all(diff(V) <= 1e-10))
   expect_equal(V[length(V)], b$objective)
 })
 
-test_that("everything downstream of the fit works on an aREML fit", {
+test_that("everything downstream of the fit works on an qREML fit", {
   d <- sim_efs(300)
   b <- gamRTMB(y ~ list(mean = ~ s(x1, k = 10), sd = ~ s(x2, k = 8)),
-               data = d, method = "aREML")
+               data = d, method = "qREML")
   expect_s3_class(edf(b), "data.frame")
   V <- vcov(b)
   expect_equal(dim(V), rep(b$design$nbeta, 2L))
@@ -198,42 +198,42 @@ test_that("everything downstream of the fit works on an aREML fit", {
   expect_named(p$fit, c("mean", "sd"))
   expect_true(all(p$se.fit$mean > 0))
   expect_length(stats::residuals(b), nrow(d))
-  expect_output(print(b), "aREML")
+  expect_output(print(b), "qREML")
   ## named so it is not read as a stationarity measure
   expect_output(print(b), "max\\|FS grad\\|")
 })
 
-test_that("aREML reports its progress when asked, and not otherwise", {
+test_that("qREML reports its progress when asked, and not otherwise", {
   d <- sim_efs(200)
   f <- y ~ list(mean = ~ s(x1, k = 8), sd = ~ s(x2, k = 6))
-  expect_silent(gamRTMB(f, data = d, method = "aREML"))
+  expect_silent(gamRTMB(f, data = d, method = "qREML"))
   ## `silent = FALSE` is what a user reaches for; there is no MakeADFun here
   ## for it to reach, so the fit has to honour it itself.
-  expect_message(gamRTMB(f, data = d, method = "aREML", silent = FALSE), "\\[start\\]")
-  expect_message(gamRTMB(f, data = d, method = "aREML", silent = FALSE),
+  expect_message(gamRTMB(f, data = d, method = "qREML", silent = FALSE), "\\[start\\]")
+  expect_message(gamRTMB(f, data = d, method = "qREML", silent = FALSE),
                  "converged after")
-  expect_message(gamRTMB(f, data = d, method = "aREML",
+  expect_message(gamRTMB(f, data = d, method = "qREML",
                          control = list(trace = TRUE)), "efs\\s+1\\s+-REML")
   ## the size line comes out before the first inner solve, which on a hard
   ## family is the longest single step in the fit
-  expect_message(gamRTMB(f, data = d, method = "aREML", silent = FALSE),
+  expect_message(gamRTMB(f, data = d, method = "qREML", silent = FALSE),
                  "observations.*coefficients.*smoothing")
   ## Level 2 adds the inner Newton, and level 1 does not. Anchored on the
   ## indent, because level 1 mentions the inner solve too -- it says the first
   ## one is starting, and points at level 2 for watching it.
-  expect_message(gamRTMB(f, data = d, method = "aREML",
+  expect_message(gamRTMB(f, data = d, method = "qREML",
                          control = list(trace = 2)), "^\\s+inner\\s+\\d")
   expect_false(any(grepl("^\\s+inner", capture_messages(
-    gamRTMB(f, data = d, method = "aREML", control = list(trace = 1))))))
+    gamRTMB(f, data = d, method = "qREML", control = list(trace = 1))))))
   ## and an explicit trace wins over silent, in either direction
-  expect_silent(gamRTMB(f, data = d, method = "aREML", silent = FALSE,
+  expect_silent(gamRTMB(f, data = d, method = "qREML", silent = FALSE,
                         control = list(trace = FALSE)))
 })
 
 test_that("the traced smoothing parameters are the ones edf() reports", {
   d <- sim_efs(200)
   b <- gamRTMB(y ~ list(mean = ~ s(x1, k = 8), sd = ~ s(x2, k = 6)),
-               data = d, method = "aREML")
+               data = d, method = "qREML")
   pmap <- .efs_pairs(b$design)
   sp <- .efs_sp(.efs_free(b$log_sigma, pmap), .efs_sp_kind(b$design, pmap))
   expect_equal(signif(sp, 4), signif(as.numeric(edf(b)$sp), 4))
@@ -245,9 +245,9 @@ test_that("both inner solvers reach the same place on a well-posed problem", {
   ## would mean the option changes the answer, not just the cost.
   d <- sim_efs(300)
   f <- y ~ list(mean = ~ s(x1, k = 10), sd = ~ s(x2, k = 8))
-  bf <- gamRTMB(f, data = d, method = "aREML",
+  bf <- gamRTMB(f, data = d, method = "qREML",
                 control = list(inner_method = "bfgs"))
-  nw <- gamRTMB(f, data = d, method = "aREML",
+  nw <- gamRTMB(f, data = d, method = "qREML",
                 control = list(inner_method = "newton"))
   expect_true(bf$convergence)
   expect_true(nw$convergence)
@@ -265,7 +265,7 @@ test_that("the Newton branch is TMB's, not one written here", {
                           list(inner_method = "nope")), "bfgs")
 })
 
-test_that("aREML honours the rest of the model contract", {
+test_that("qREML honours the rest of the model contract", {
   ## Prior weights, offsets and the smooth types that reparameterise in
   ## awkward ways all pass through .make_nll() and the design rather than
   ## through the fitting routine, so this is checking that it has not quietly
@@ -277,7 +277,7 @@ test_that("aREML honours the rest of the model contract", {
   d$y <- stats::rnorm(n, sin(2 * pi * d$x1), 0.3)
   d$cnt <- stats::rpois(n, d$E * exp(0.5 + sin(2 * pi * d$x1)))
   same <- function(form, family = fam("norm"), ...) {
-    b <- gamRTMB(form, family = family, data = d, method = "aREML", ...)
+    b <- gamRTMB(form, family = family, data = d, method = "qREML", ...)
     a <- gamRTMB(form, family = family, data = d, ...)
     expect_true(b$convergence)
     expect_equal(b$objective, a$objective, tolerance = 1e-4)
@@ -289,12 +289,12 @@ test_that("aREML honours the rest of the model contract", {
   same(y ~ list(mean = ~ t2(x1, x2, k = 4)))
 
   d$x1[c(3, 7)] <- NA
-  r <- gamRTMB(y ~ list(mean = ~ s(x1, k = 8)), data = d, method = "aREML")
+  r <- gamRTMB(y ~ list(mean = ~ s(x1, k = 8)), data = d, method = "qREML")
   expect_equal(r$dropped, 2L)
   expect_equal(r$design$n, n - 2L)
 })
 
-test_that("one aREML fit does not disturb the next", {
+test_that("one qREML fit does not disturb the next", {
   ## RTMB's OBS() keys on the deparsed name of its argument in a registry
   ## global to the package. MakeADFun resets it per object; MakeTape, which is
   ## what this engine uses, does not -- so a tape that calls OBS(y) leaves the
@@ -305,10 +305,10 @@ test_that("one aREML fit does not disturb the next", {
   ## check that it stays that way.
   d3 <- sim_efs(300, seed = 3)
   d2 <- sim_efs(200, seed = 4)
-  alone <- gamRTMB(y ~ list(mean = ~ x1), data = d2, method = "aREML")
+  alone <- gamRTMB(y ~ list(mean = ~ x1), data = d2, method = "qREML")
   invisible(gamRTMB(y ~ list(mean = ~ s(x1, k = 10), sd = ~ s(x2, k = 8)),
-                    data = d3, method = "aREML"))
-  after <- gamRTMB(y ~ list(mean = ~ x1), data = d2, method = "aREML")
+                    data = d3, method = "qREML"))
+  after <- gamRTMB(y ~ list(mean = ~ x1), data = d2, method = "qREML")
   expect_equal(after$coefficients$beta, alone$coefficients$beta)
   expect_equal(after$objective, alone$objective)
 })

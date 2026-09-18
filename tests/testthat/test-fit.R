@@ -111,15 +111,15 @@ test_that("logLik warns rather than quietly miscounting df", {
   expect_equal(attr(ll, "df"), fit$design$nbeta + fit$design$nsigma_free)
 })
 
-test_that("aREML is a criterion, not a second axis to cross with ML", {
+test_that("qREML is a criterion, not a second axis to cross with ML", {
   ## The interface used to be method x engine, which made an approximate-ML
   ## fit reachable: approximate twice over, and ten times further from the
-  ## Laplace answer than aREML is from REML. There are three paths, not four.
+  ## Laplace answer than qREML is from REML. There are three paths, not four.
   d <- sim_ls(200)
   expect_error(gamRTMB(y ~ list(mean = ~ s(x1, k = 8)), data = d,
                        method = "aML"), "arg")
   expect_false("engine" %in% names(formals(gamRTMB)))
-  fit <- gamRTMB(y ~ list(mean = ~ s(x1, k = 8)), data = d, method = "aREML")
+  fit <- gamRTMB(y ~ list(mean = ~ s(x1, k = 8)), data = d, method = "qREML")
   expect_true(fit$convergence)
   expect_true(all(edf(fit)$edf > 1 & edf(fit)$edf < 8))
 })

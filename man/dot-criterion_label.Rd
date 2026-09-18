@@ -7,7 +7,7 @@
 .criterion_label(method)
 }
 \description{
-\code{"aREML"} optimises the REML criterion -- the approximation is in the
+\code{"qREML"} optimises the REML criterion -- the approximation is in the
 gradient, not in the quantity -- so its value is a REML value and is
 directly comparable with one from \code{method = "REML"}. The header line says
 which route produced it, so labelling the number for what it is costs no

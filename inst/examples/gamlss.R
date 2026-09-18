@@ -313,7 +313,7 @@ examples <- list(
      function(d) gamRTMB(cd4 ~ list(mu = ~ s(age), sigma = ~ s(age), nu = ~ 1,
                                     tau = ~ 1),
                          family = fam("bct"), data = d,
-                         method = "aREML", sigma_frac = 0.02),
+                         method = "qREML", sigma_frac = 0.02),
      list(same("mu", "mu"), same("sigma", "sigma"))),
 
   ex("mcycle-NO", function() { data(mcycle, package = "MASS"); mcycle },
@@ -331,13 +331,13 @@ examples <- list(
      "TF / t2",
      "The same, with a t response: does the apparent heteroscedasticity survive
       letting the tails be heavy? One of two fits here needing
-      method = \"aREML\" -- the default REML optimisation of the smoothing
+      method = \"qREML\" -- the default REML optimisation of the smoothing
       parameters stalls on this likelihood with a gradient of order 1.",
      function(d) gamlss(accel ~ pb(times), sigma.fo = ~ pb(times), nu.fo = ~ 1,
                         family = TF, data = d, control = glc),
      function(d) gamRTMB(accel ~ list(mu = ~ s(times, k = 20),
                                       sigma = ~ s(times, k = 10), df = ~ 1),
-                         family = fam("t2"), data = d, method = "aREML"),
+                         family = fam("t2"), data = d, method = "qREML"),
      list(same("mu", "mu"), same("sigma", "sigma"))),
 
   ex("hodges-RE", function() { data(hodges); hodges }, "NO / norm",

@@ -11,7 +11,7 @@
 
 \item{design}{The design object.}
 
-\item{method}{\code{"REML"}, \code{"ML"} or \code{"aREML"}.}
+\item{method}{\code{"REML"}, \code{"ML"} or \code{"qREML"}.}
 
 \item{famname}{The family's name, for the message.}
 }

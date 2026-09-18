@@ -16,7 +16,7 @@ the \code{beta} and \code{b} entries within it.
 \description{
 The \verb{(beta, b)} block of the inverse joint precision, which includes the
 uncertainty in the smoothing parameters (mgcv's \code{unconditional = TRUE}) --
-under \code{method = "REML"} or \code{"ML"}. \code{"aREML"} has no joint precision and
+under \code{method = "REML"} or \code{"ML"}. \code{"qREML"} has no joint precision and
 returns the inverse penalized Hessian, which conditions on the smoothing
 parameters instead; see the branch at the top of the function and
 \code{\link[=vcov.gamRTMB]{vcov.gamRTMB()}}.

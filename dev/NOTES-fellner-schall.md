@@ -1,6 +1,6 @@
 # Extended Fellner-Schall: what it is, and what it cost to build
 
-Implemented, in `R/efs.R`, reachable as `method = "aREML"`. This note keeps
+Implemented, in `R/efs.R`, reachable as `method = "qREML"`. This note keeps
 the reasoning that led there, corrects the things it got wrong before the code
 existed, and records the sharp edges found on the way.
 
@@ -9,16 +9,16 @@ existed, and records the sharp edges found on the way.
 The interface was `method = c("REML", "ML")` crossed with
 `engine = c("laplace", "efs")` for a while. That was wrong, and the package
 author said so: the way anyone actually thinks about this is three paths --
-REML, ML, approximate REML -- not a two-by-two whose fourth cell nobody wants.
+REML, ML, quasi-REML -- not a two-by-two whose fourth cell nobody wants.
 
 The fourth cell was `engine = "efs"` with `method = "ML"`, and it deserved to
 go on its own merits. It was approximate twice over: the Fellner-Schall
 gradient drops the third-derivative term, *and* the unpenalized coefficients
 were profiled at the penalized likelihood's mode rather than at the maximiser
 of the criterion. It measured +0.07 nats against Laplace ML, ten times the
-~0.002 that aREML costs against REML.
+~0.002 that qREML costs against REML.
 
-So there is one argument, `method`, with three values, and `"aREML"` means
+So there is one argument, `method`, with three values, and `"qREML"` means
 "the REML criterion, optimised by extended Fellner-Schall". The
 approximation is in the *gradient*, not in the criterion, which is why the
 reported value is labelled `-REML` and is directly comparable with a
@@ -35,7 +35,7 @@ coefficients — the expensive term, in both time and tape memory.
 EFS (Wood & Fasiolo 2017) drops exactly that term and replaces the gradient
 step with a multiplicative update. For that to pay off, **nothing may be
 declared `random`**: the Laplace machinery must not be built at all, or its
-tape cost is paid anyway. So `"aREML"` owns both halves of the fit:
+tape cost is paid anyway. So `"qREML"` owns both halves of the fit:
 
 1. an inner Newton loop maximising the penalized log-likelihood over
    `c = (beta, b)` at fixed smoothing parameters, and
@@ -193,7 +193,7 @@ two halves add back up to the objective the Laplace engine gets.
 
 ## What it is worth: measured
 
-`dev/bench-efs.R`, 500 observations, one run each. `dV` is aREML minus REML on
+`dev/bench-efs.R`, 500 observations, one run each. `dV` is qREML minus REML on
 the criterion, so positive is worse; `dEDF` likewise.
 
 ```
@@ -208,7 +208,7 @@ the criterion, so positive is worse; `dEDF` likewise.
 ```
 
 And on the full `film90`, against `LaMa::qreml()` rather than against REML,
-which cannot start: 42s for aREML and 56s for `qreml`, logLik -5882.8 against
+which cannot start: 42s for qREML and 56s for `qreml`, logLik -5882.8 against
 -5883.2, total EDF 33.7 against 33.8.
 
 Two things to read off this. **The approximation is small**: a few
@@ -218,11 +218,11 @@ degree of freedom, on models where both converge.
 **The speed is not the reason to use it.** Between 0.35x and 2.0x, with no
 clear pattern, at this problem size. The third-derivative term REML pays for
 is not yet the dominant cost on a few hundred observations and a few dozen
-coefficients; where aREML should win is where that term's tape gets large,
+coefficients; where qREML should win is where that term's tape gets large,
 which these models do not reach. What it buys at this size is the last row: a
 fit that exists at all.
 
-On that row aREML returns a fit where REML cannot start, with effective
+On that row qREML returns a fit where REML cannot start, with effective
 degrees of freedom in `[0, 1]` per coefficient, and reports honestly that it
 did not get there cleanly on the 600-row subsample: `converged: FALSE`, and
 the data Hessian repaired at three iterations including the last, so the
@@ -361,7 +361,7 @@ objective in those coefficients is perfectly well defined all the same.
 `.coef_hessian()` tapes it — `MakeTape` over `c(beta, b)` with the smoothing
 parameters held constant, the same shape of tape this engine uses, and
 `obs = FALSE` for the same `OBS()` registry reason — and `"ML"` fills `fit$H`
-the way `"aREML"` does. Checked against a REML fit's own `spHess`, where the
+the way `"qREML"` does. Checked against a REML fit's own `spHess`, where the
 matrix can be had both ways: agreement to 4e-16 relative.
 
 Worth recording what that had been costing downstream, because the failure was

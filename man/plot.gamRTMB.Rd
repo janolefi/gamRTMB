@@ -75,7 +75,7 @@ a \strong{pointwise} \eqn{\pm 2} standard error band. The band comes from
 \code{\link[=vcov.gamRTMB]{vcov.gamRTMB()}}'s joint covariance. Under \code{method = "REML"} or \code{"ML"} that
 includes the uncertainty in the smoothing parameters (mgcv's
 \code{unconditional = TRUE}) and needs a fit made with \code{joint_precision = TRUE},
-which is the default; under \code{method = "aREML"} it conditions on them, so the
+which is the default; under \code{method = "qREML"} it conditions on them, so the
 band is a little too narrow. Panels are titled
 \code{parameter: term}, since terms belong to different parameters.
 

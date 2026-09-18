@@ -47,7 +47,7 @@
 #' [vcov.gamRTMB()]'s joint covariance. Under `method = "REML"` or `"ML"` that
 #' includes the uncertainty in the smoothing parameters (mgcv's
 #' `unconditional = TRUE`) and needs a fit made with `joint_precision = TRUE`,
-#' which is the default; under `method = "aREML"` it conditions on them, so the
+#' which is the default; under `method = "qREML"` it conditions on them, so the
 #' band is a little too narrow. Panels are titled
 #' `parameter: term`, since terms belong to different parameters.
 #'

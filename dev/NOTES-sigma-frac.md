@@ -141,7 +141,7 @@ which has its own tuning above. For now `dbbmi` is pinned in the example suite
 and the retry announces itself before spending the time.
 
 `CD4-BCT` and `mcycle-TF` are not fixed by any rung under REML; both converge
-under `method = "aREML"`. A criterion fallback is the obvious next thing to
+under `method = "qREML"`. A criterion fallback is the obvious next thing to
 try and is deliberately not done here: it would have to compare two different
 criteria to choose between them, which the objective-selection rule above
 cannot do.

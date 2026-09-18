@@ -142,11 +142,11 @@ test_that("te, ti and adaptive fits agree with mgcv", {
   agrees("s(x, bs = \"ad\", k = 25)", "s(x, bs = \"ad\", k = 25)", "y3")
 })
 
-test_that("aREML reaches the same place as REML on a te()", {
+test_that("qREML reaches the same place as REML on a te()", {
   skip_on_cran()
   d <- sim2()
   a <- gamRTMB(y ~ list(mean = ~ te(x, z), sd = ~ 1), data = d)
-  b <- gamRTMB(y ~ list(mean = ~ te(x, z), sd = ~ 1), data = d, method = "aREML")
+  b <- gamRTMB(y ~ list(mean = ~ te(x, z), sd = ~ 1), data = d, method = "qREML")
   expect_equal(as.numeric(logLik(a)), as.numeric(logLik(b)), tolerance = 1e-3)
   expect_equal(sum(edf(a)$edf), sum(edf(b)$edf), tolerance = 0.01)
 })
