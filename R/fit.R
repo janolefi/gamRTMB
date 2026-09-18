@@ -382,7 +382,7 @@
 #'
 #' @param obj The `MakeADFun` object, evaluated at its starting values.
 #' @param design The design object.
-#' @param method `"REML"`, `"ML"` or `"qREML"`.
+#' @param method `"REML"`, `"qREML"` or `"ML"`.
 #' @param famname The family's name, for the message.
 #' @return A sentence describing the negative curvature, or `NULL` if the
 #'   Hessian is unavailable or positive definite.
@@ -508,19 +508,24 @@
 #' its parameter to have one. See [.null_space()].
 #'
 #' @section Smoothness selection:
-#' Three criteria, and the third is the reason the other two are named rather
-#' than assumed.
+#' Three criteria, in the order worth trying them.
 #'
 #' `"REML"` (the default) puts the mean-structure coefficients into the random
 #' vector alongside the spline coefficients, so the same Laplace approximation
 #' integrates out both. This is the bias and stability correction of Wood
 #' (2011); it is not a sparsity argument, since mgcv's bases have global
-#' support and are dense either way.
+#' support and are dense either way. It is also the most reproducible of the
+#' three: over the models in `inst/examples/gamlss.R`, fitted from three
+#' different `sigma_frac` starts, every fit that converged landed on the same
+#' criterion to within 5e-07.
 #'
-#' `"ML"` keeps them as fixed effects, so the criterion is the marginal
-#' likelihood of the penalized coefficients alone. Two REML fits whose
-#' unpenalized structure differs are not comparable on their criterion; two ML
-#' fits are.
+#' **If `"REML"` does not converge, `"qREML"` is the thing to try next.** It
+#' is what fits the harder four-parameter families at all, and it is faster
+#' than `"REML"` on exactly those -- three to four times so on the `bcpe`,
+#' `bct` and `jsu2` fits in that file. What it gives up is reproducibility:
+#' from those same three starts its criterion moved by a median of 1e-03, and
+#' on two models by very much more. So it is where to go when the default
+#' fails, not a better default; when both converge, prefer `"REML"`.
 #'
 #' `"qREML"` is **quasi-REML**: the same criterion as `"REML"`,
 #' optimised by the extended Fellner-Schall method of Wood & Fasiolo (2017)
@@ -545,10 +550,16 @@
 #' four-parameter families, `bcpe` and its relatives. On those it is the only
 #' one of the three that returns a fit.
 #'
-#' It is *not*, at the sizes measured so far, reliably faster on models where
-#' both work: over eight of them it ranged from 0.5 to 2.4 times `"REML"`'s
-#' time with no clear pattern, because the third-derivative term it avoids is
-#' not yet the dominant cost on a few hundred observations.
+#' On models where both work it is *not* reliably faster, and which way it
+#' goes is systematic rather than random. Over the 32 comparable models in
+#' `inst/examples/gamlss.R` the per-model ratio to `"REML"`'s time had a
+#' median of 1.16 and ran from 0.27 to 24. It wins where the dropped
+#' third-derivative term is the dominant cost -- the four-parameter families,
+#' 0.27 to 0.39 times `"REML"` -- and loses on ordinary ones, by up to 24
+#' times on a 45-point negative binomial and 20 on a one-smooth logistic
+#' regression over 10590 points. In total over those 32 it came to 466s
+#' against 566s, but the entire margin is the one `bcpe` fit `"REML"` cannot
+#' do; excluding it, 97s against 91s.
 #'
 #' Three things to know before using it. `max_grad` is a diagnostic rather
 #' than a stationarity certificate, since the Fellner-Schall gradient does not
@@ -556,6 +567,16 @@
 #' fitted smoothing parameters instead of allowing for their uncertainty, so
 #' standard errors and bands are a little narrow; see [vcov.gamRTMB()]. And
 #' `sigma_frac`, `joint_precision` and `inner_control` do not apply.
+#'
+#' `"ML"` keeps the mean-structure coefficients as fixed effects, so the
+#' criterion is the marginal likelihood of the penalized coefficients alone.
+#' Two REML fits whose unpenalized structure differs are not comparable on
+#' their criterion; two ML fits are, and that comparison is the only reason to
+#' choose it. **It is not recommended for complicated models otherwise.** It
+#' is the slowest of the three -- because the unpenalized coefficients become
+#' outer parameters, so the optimiser drives all of them with a Laplace
+#' evaluation apiece -- and on a four-parameter `bcpe` over 7294 observations
+#' it had not finished after 35 minutes where the other two took about eight.
 #'
 #' @section Supported smooths:
 #' `s()`, `t2()`, `by =` variables, `bs = "fs"` and `bs = "re"` all
@@ -578,10 +599,14 @@
 #'   [stats::na.omit()] by default, which drops those rows and reports how
 #'   many in the fit's summary.
 #' @param knots Passed to [mgcv::smoothCon()].
-#' @param method Smoothness selection criterion: `"REML"` (default), `"ML"`,
-#'   or `"qREML"` for quasi-REML by extended Fellner-Schall. See the
-#'   Smoothness selection section, which says when the third is worth
-#'   reaching for and what it costs.
+#' @param method Smoothness selection criterion: `"REML"` (default),
+#'   `"qREML"` for quasi-REML by extended Fellner-Schall, or `"ML"`.
+#'
+#'   Reach for `"qREML"` when `"REML"` will not converge -- it is what fits
+#'   the harder four-parameter families at all. `"ML"` is not recommended for
+#'   complicated models; it is there for the one thing it alone can do, which
+#'   is compare models whose unpenalized structure differs. See the Smoothness
+#'   selection section for what each costs.
 #' @param sigma_frac Tuning constant for the variance-component starting
 #'   values: each smooth starts contributing this fraction of its parameter's
 #'   linear-predictor scale. See [.init_pars()].
@@ -651,7 +676,7 @@
 #' @export
 gamRTMB <- function(formula, family = fam("norm"), data = NULL, weights = NULL,
                     na.action = stats::na.omit, knots = NULL,
-                    method = c("REML", "ML", "qREML"), sigma_frac = 0.05,
+                    method = c("REML", "qREML", "ML"), sigma_frac = 0.05,
                     sparse = c("auto", "never", "always"),
                     joint_precision = TRUE, start = NULL, silent = TRUE,
                     control = list(), inner_control = list()) {

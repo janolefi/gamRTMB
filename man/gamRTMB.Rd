@@ -14,7 +14,7 @@ gamRTMB(
   weights = NULL,
   na.action = stats::na.omit,
   knots = NULL,
-  method = c("REML", "ML", "qREML"),
+  method = c("REML", "qREML", "ML"),
   sigma_frac = 0.05,
   sparse = c("auto", "never", "always"),
   joint_precision = TRUE,
@@ -50,10 +50,14 @@ many in the fit's summary.}
 
 \item{knots}{Passed to \code{\link[mgcv:smoothCon]{mgcv::smoothCon()}}.}
 
-\item{method}{Smoothness selection criterion: \code{"REML"} (default), \code{"ML"},
-or \code{"qREML"} for quasi-REML by extended Fellner-Schall. See the
-Smoothness selection section, which says when the third is worth
-reaching for and what it costs.}
+\item{method}{Smoothness selection criterion: \code{"REML"} (default),
+\code{"qREML"} for quasi-REML by extended Fellner-Schall, or \code{"ML"}.
+
+Reach for \code{"qREML"} when \code{"REML"} will not converge -- it is what fits
+the harder four-parameter families at all. \code{"ML"} is not recommended for
+complicated models; it is there for the one thing it alone can do, which
+is compare models whose unpenalized structure differs. See the Smoothness
+selection section for what each costs.}
 
 \item{sigma_frac}{Tuning constant for the variance-component starting
 values: each smooth starts contributing this fraction of its parameter's
@@ -183,19 +187,24 @@ its parameter to have one. See \code{\link[=.null_space]{.null_space()}}.
 
 \section{Smoothness selection}{
 
-Three criteria, and the third is the reason the other two are named rather
-than assumed.
+Three criteria, in the order worth trying them.
 
 \code{"REML"} (the default) puts the mean-structure coefficients into the random
 vector alongside the spline coefficients, so the same Laplace approximation
 integrates out both. This is the bias and stability correction of Wood
 (2011); it is not a sparsity argument, since mgcv's bases have global
-support and are dense either way.
+support and are dense either way. It is also the most reproducible of the
+three: over the models in \code{inst/examples/gamlss.R}, fitted from three
+different \code{sigma_frac} starts, every fit that converged landed on the same
+criterion to within 5e-07.
 
-\code{"ML"} keeps them as fixed effects, so the criterion is the marginal
-likelihood of the penalized coefficients alone. Two REML fits whose
-unpenalized structure differs are not comparable on their criterion; two ML
-fits are.
+\strong{If \code{"REML"} does not converge, \code{"qREML"} is the thing to try next.} It
+is what fits the harder four-parameter families at all, and it is faster
+than \code{"REML"} on exactly those -- three to four times so on the \code{bcpe},
+\code{bct} and \code{jsu2} fits in that file. What it gives up is reproducibility:
+from those same three starts its criterion moved by a median of 1e-03, and
+on two models by very much more. So it is where to go when the default
+fails, not a better default; when both converge, prefer \code{"REML"}.
 
 \code{"qREML"} is \strong{quasi-REML}: the same criterion as \code{"REML"},
 optimised by the extended Fellner-Schall method of Wood & Fasiolo (2017)
@@ -220,10 +229,16 @@ Hessian instead -- and that is where \code{"REML"} fails outright on the harder
 four-parameter families, \code{bcpe} and its relatives. On those it is the only
 one of the three that returns a fit.
 
-It is \emph{not}, at the sizes measured so far, reliably faster on models where
-both work: over eight of them it ranged from 0.5 to 2.4 times \code{"REML"}'s
-time with no clear pattern, because the third-derivative term it avoids is
-not yet the dominant cost on a few hundred observations.
+On models where both work it is \emph{not} reliably faster, and which way it
+goes is systematic rather than random. Over the 32 comparable models in
+\code{inst/examples/gamlss.R} the per-model ratio to \code{"REML"}'s time had a
+median of 1.16 and ran from 0.27 to 24. It wins where the dropped
+third-derivative term is the dominant cost -- the four-parameter families,
+0.27 to 0.39 times \code{"REML"} -- and loses on ordinary ones, by up to 24
+times on a 45-point negative binomial and 20 on a one-smooth logistic
+regression over 10590 points. In total over those 32 it came to 466s
+against 566s, but the entire margin is the one \code{bcpe} fit \code{"REML"} cannot
+do; excluding it, 97s against 91s.
 
 Three things to know before using it. \code{max_grad} is a diagnostic rather
 than a stationarity certificate, since the Fellner-Schall gradient does not
@@ -231,6 +246,16 @@ reach zero at the optimum. The coefficient covariance conditions on the
 fitted smoothing parameters instead of allowing for their uncertainty, so
 standard errors and bands are a little narrow; see \code{\link[=vcov.gamRTMB]{vcov.gamRTMB()}}. And
 \code{sigma_frac}, \code{joint_precision} and \code{inner_control} do not apply.
+
+\code{"ML"} keeps the mean-structure coefficients as fixed effects, so the
+criterion is the marginal likelihood of the penalized coefficients alone.
+Two REML fits whose unpenalized structure differs are not comparable on
+their criterion; two ML fits are, and that comparison is the only reason to
+choose it. \strong{It is not recommended for complicated models otherwise.} It
+is the slowest of the three -- because the unpenalized coefficients become
+outer parameters, so the optimiser drives all of them with a Laplace
+evaluation apiece -- and on a four-parameter \code{bcpe} over 7294 observations
+it had not finished after 35 minutes where the other two took about eight.
 }
 
 \section{Supported smooths}{

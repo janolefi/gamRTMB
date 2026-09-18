@@ -9,7 +9,7 @@ existed, and records the sharp edges found on the way.
 The interface was `method = c("REML", "ML")` crossed with
 `engine = c("laplace", "efs")` for a while. That was wrong, and the package
 author said so: the way anyone actually thinks about this is three paths --
-REML, ML, quasi-REML -- not a two-by-two whose fourth cell nobody wants.
+REML, quasi-REML, ML -- not a two-by-two whose fourth cell nobody wants.
 
 The fourth cell was `engine = "efs"` with `method = "ML"`, and it deserved to
 go on its own merits. It was approximate twice over: the Fellner-Schall

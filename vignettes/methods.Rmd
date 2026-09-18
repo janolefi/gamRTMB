@@ -1,8 +1,8 @@
 ---
-title: "REML, ML and quasi-REML"
+title: "REML, quasi-REML and ML"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{REML, ML and quasi-REML}
+  %\VignetteIndexEntry{REML, quasi-REML and ML}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -39,16 +39,17 @@ is the bias correction of Wood (2011): the smoothing parameters are then
 chosen from a criterion that has already accounted for the mean structure
 rather than one that treats it as known.
 
-**`"ML"`** keeps them as fixed effects. The criterion is then the marginal
-likelihood of the penalized coefficients only.
-
 **`"qREML"`** is the same criterion as `"REML"` — not a third one — optimised
 differently. Instead of handing the smoothing parameters to `nlminb` with a
 gradient from the Laplace approximation, it uses the extended Fellner-Schall
 update of Wood & Fasiolo (2017), which drops the term in that gradient
 requiring third derivatives of the log-likelihood. **The approximation is in
 the gradient, not in the criterion**, which is why the value it reports is
-comparable with a `"REML"` fit's.
+comparable with a `"REML"` fit's. The *q* is for quasi: it is an
+approximation to REML, and the name is meant to keep that in view.
+
+**`"ML"`** keeps them as fixed effects. The criterion is then the marginal
+likelihood of the penalized coefficients only.
 
 ## On a model all three can fit
 
@@ -364,16 +365,24 @@ diverge in rather than as a benchmark.
 - **`"REML"`** unless something below applies. It is the default, it is the
   best-founded criterion of the three, it reports effective degrees of freedom
   and unconditional standard errors, and its convergence diagnostic means what
-  it says.
-- **`"ML"`** to compare models whose unpenalized structure differs, or as the
-  first thing to try when `"REML"` will not start — bearing in mind the `bcpe`
-  example, where it starts and gets nowhere.
-- **`"qREML"`** when `"REML"` will not start and `"ML"` does not rescue it —
-  in practice, the harder four-parameter families — or when you want a second
-  opinion on a `"REML"` fit's smoothing parameters from an optimiser with a
-  completely different failure mode. Read `max_grad` as a hint rather than a
-  verdict, read `converged = FALSE` the same way, and remember the intervals
-  are conditional.
+  it says. It is also the most reproducible: fitted from three different
+  `sigma_frac` starts across the models in `inst/examples/gamlss.R`, every
+  `"REML"` fit that converged landed on the same criterion to within 5e-07.
+- **`"qREML"`** when `"REML"` will not converge — in practice, the harder
+  four-parameter families, where it is both the only one that fits and three
+  to four times faster than `"REML"` is at failing. Also for a second opinion
+  on a `"REML"` fit's smoothing parameters from an optimiser with a completely
+  different failure mode. Read `max_grad` as a hint rather than a verdict,
+  read `converged = FALSE` the same way, and remember the intervals are
+  conditional. What it gives up is reproducibility: over those same three
+  starts its criterion moved by a median of 1e-03, and on two models by very
+  much more. So prefer `"REML"` wherever both converge.
+- **`"ML"`** to compare models whose unpenalized structure differs. That is
+  the one thing it alone can do, and outside it **`"ML"` is not recommended
+  for complicated models** — it is the slowest of the three, and on the
+  four-parameter `bcpe` fit over 7294 observations it had not finished after
+  35 minutes where the other two took about eight. It is not the thing to
+  reach for when `"REML"` will not converge; `"qREML"` is.
 
 Nothing here is a reason to fit every model three ways. On a model all three
 can fit they agree, and the point of naming them is the models where they do
