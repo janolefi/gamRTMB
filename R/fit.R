@@ -731,7 +731,7 @@ gamRTMB <- function(formula, family = fam("norm"), data = NULL, weights = NULL,
   if (method == "ML")
     fit$H <- .coef_hessian(.make_nll(design, family, y, fx, w, obs = FALSE),
                            fit$coefficients$beta, fit$coefficients$b,
-                           fit$log_sigma)
+                           fit$log_sigma, design)
 
   fit$family <- family
   fit$method <- method
@@ -775,18 +775,32 @@ gamRTMB <- function(formula, family = fam("norm"), data = NULL, weights = NULL,
 #'   constant: the tape is over the coefficients alone, which also keeps a
 #'   `dgmrf` block's `log|Q(theta)|` off it, since RTMB declines a second
 #'   sparse Jacobian through one.
+#' @param design From [.build_design()], to decide which of the two routes to
+#'   the matrix is cheaper. `NULL` keeps the sparse one.
 #' @return A symmetric sparse matrix ordered `beta` then `b`, or `NULL` if the
-#'   tape could not be built.
+#'   matrix could not be built.
 #' @keywords internal
-.coef_hessian <- function(nll, beta, b, log_sigma) {
+.coef_hessian <- function(nll, beta, b, log_sigma, design = NULL) {
   nbeta <- length(beta)
   ib <- nbeta + seq_len(length(b))
   fc <- function(x) nll(list(beta = x[seq_len(nbeta)], b = x[ib],
                              log_sigma = log_sigma))
   p <- c(beta, b)
   tryCatch({
-    tape <- RTMB::MakeTape(fc, p)
-    .sym_sparse(tape$jacfun()$jacfun(sparse = TRUE)(p))
+    ## Composing `jacfun()$jacfun(sparse = TRUE)` costs a build that scales
+    ## with the nonzeros it has to produce, and this matrix is wanted exactly
+    ## once. Where the design says the result is dense there is nothing for
+    ## that build to buy: on the two-smooth `film90` fit it is 1.32s against
+    ## 0.046s for the same matrix off a `MakeADFun`, to the same digits.
+    ## See [.hessian_density()].
+    if (!is.null(design) && .use_dense_hessian(design)) {
+      ad <- RTMB::MakeADFun(function(par) { RTMB::getAll(par); fc(x) },
+                            list(x = p), silent = TRUE)
+      .sym_sparse(ad$he(p))
+    } else {
+      tape <- RTMB::MakeTape(fc, p)
+      .sym_sparse(tape$jacfun()$jacfun(sparse = TRUE)(p))
+    }
   }, error = function(e) NULL)
 }
 

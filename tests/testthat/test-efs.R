@@ -325,3 +325,101 @@ test_that("the exact update and the metric step agree to first order", {
   grad <- as.numeric(crossprod(L, dv - n)) / 2
   expect_equal(-grad / metric, lr / L[1, 1], tolerance = 1e-3)
 })
+
+## ---------------------------------------------------------------------------
+## Which route the penalized Hessian takes. The prediction is structural --
+## pattern(H) is contained in pattern(Z'Z) u pattern(S) -- so it is checked
+## against the Hessian itself rather than against a remembered number.
+
+hess_both <- function(fit) {
+  d <- fit$design
+  p <- c(fit$coefficients$beta, fit$coefficients$b)
+  nll <- .make_nll(d, fit$family, fit$y, fit$fixed, fit$weights,
+                   obs = FALSE, prior_const = FALSE)
+  nb <- d$nbeta; ib <- nb + seq_len(d$nb)
+  fc <- function(x) nll(list(beta = x[seq_len(nb)], b = x[ib],
+                             log_sigma = fit$log_sigma))
+  tp <- RTMB::MakeTape(fc, p)
+  ad <- RTMB::MakeADFun(function(par) { RTMB::getAll(par); fc(x) },
+                        list(x = p), silent = TRUE)
+  list(sparse = tp$jacfun()$jacfun(sparse = TRUE)(p), dense = ad$he(p), p = p)
+}
+
+test_that("the predicted Hessian density contains the true one", {
+  skip_on_cran()
+  d <- sim_efs(300)
+  set.seed(4); d$g <- factor(sample(12, nrow(d), TRUE))
+  models <- list(
+    ## two dense smooths: every column co-occurs with every other
+    dense = gamRTMB(y ~ list(mean = ~ s(x1, k = 8), sd = ~ s(x2, k = 6)),
+                    data = d, method = "qREML"),
+    ## an indicator basis: each row touches one column, so H is mostly zero
+    re    = gamRTMB(y ~ list(mean = ~ s(g, bs = "re"), sd = ~ 1),
+                    data = d, method = "qREML"))
+  for (nm in names(models)) {
+    h <- hess_both(models[[nm]])
+    true <- Matrix::nnzero(h$sparse) / length(h$p)^2
+    pred <- .hessian_density(models[[nm]]$design)
+    ## containment, which is the direction that makes the decision safe
+    expect_gte(pred, true - 1e-12, label = nm)
+    expect_lte(pred, 1)
+    ## and the two routes are the same matrix
+    expect_equal(as.matrix(h$sparse), h$dense, ignore_attr = TRUE,
+                 tolerance = 1e-7)
+  }
+  expect_gt(.hessian_density(models$dense$design), 0.9)
+  expect_lt(.hessian_density(models$re$design), 0.5)
+})
+
+test_that("routing needs density and size together, not either alone", {
+  d <- sim_efs(300)
+  set.seed(4); d$g <- factor(sample(12, nrow(d), TRUE))
+  small <- gamRTMB(y ~ list(mean = ~ s(x1, k = 8), sd = ~ s(x2, k = 6)),
+                   data = d, method = "qREML")
+  ## dense, but far too small for the tape's build to be worth avoiding
+  expect_gt(.hessian_density(small$design), 0.9)
+  expect_lt(small$design$n * (small$design$nbeta + small$design$nb)^2,
+            .dense_hessian_min_work)
+  expect_false(.use_dense_hessian(small$design))
+
+  ## sparse and large: still the tape, because that is where it pays
+  re <- gamRTMB(y ~ list(mean = ~ s(g, bs = "re"), sd = ~ 1), data = d,
+                method = "qREML")
+  expect_false(.use_dense_hessian(re$design))
+})
+
+test_that("the route moves a fit by less than EFS's own tolerance", {
+  ## `rent` is dense and large enough to be routed to `$he()`; forcing the cut
+  ## out of reach puts it back on the tape.
+  ##
+  ## The two are NOT bit-identical, and pretending otherwise would be the
+  ## wrong test. The Hessians agree to ~1e-8 at a common point (above), but
+  ## EFS is an iteration: that difference decides a step, the fit stops one
+  ## iteration later, and `log_sigma` lands a few percent away. What has to
+  ## hold is that the criterion agrees to EFS's own convergence tolerance --
+  ## measured at 1.1e-04 absolute on 14045, i.e. 8e-09 relative, against
+  ## `ctl$tol` of 1e-08 -- which is an order of magnitude tighter than the
+  ## spread qREML shows across starting values anyway.
+  skip_on_cran()
+  skip_if_not_installed("gamlss.data")
+  rent <- gamlss.data::rent
+  fo <- R ~ list(mean = ~ s(Fl, k = 20), sd = ~ s(Fl, k = 20))
+  f1 <- gamRTMB(fo, family = fam("gamma2"), data = rent, method = "qREML")
+  expect_true(.use_dense_hessian(f1$design))
+
+  old <- .dense_hessian_cut
+  on.exit(assignInNamespace(".dense_hessian_cut", old, ns = "gamRTMB"))
+  assignInNamespace(".dense_hessian_cut", 2, ns = "gamRTMB")
+  f2 <- gamRTMB(fo, family = fam("gamma2"), data = rent, method = "qREML")
+  expect_false(.use_dense_hessian(f2$design))
+
+  expect_equal(f1$objective, f2$objective, tolerance = 1e-7)   # relative
+  expect_equal(as.numeric(logLik(f1)), as.numeric(logLik(f2)),
+               tolerance = 1e-6)
+  expect_equal(attr(edf(f1), "edf.total"), attr(edf(f2), "edf.total"),
+               tolerance = 1e-2)
+  ## `H` carries the penalty, so it moves with the smoothing parameters and is
+  ## not the thing to compare across routes; `hess_both()` above compares the
+  ## two routes at a point, which is.
+  expect_equal(dim(f1$H), dim(f2$H))
+})

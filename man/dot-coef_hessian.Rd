@@ -4,7 +4,7 @@
 \alias{.coef_hessian}
 \title{The penalized Hessian in the coefficients, from a tape of its own}
 \usage{
-.coef_hessian(nll, beta, b, log_sigma)
+.coef_hessian(nll, beta, b, log_sigma, design = NULL)
 }
 \arguments{
 \item{nll}{The joint penalized negative log-likelihood, from
@@ -16,10 +16,13 @@
 constant: the tape is over the coefficients alone, which also keeps a
 \code{dgmrf} block's \verb{log|Q(theta)|} off it, since RTMB declines a second
 sparse Jacobian through one.}
+
+\item{design}{From \code{\link[=.build_design]{.build_design()}}, to decide which of the two routes to
+the matrix is cheaper. \code{NULL} keeps the sparse one.}
 }
 \value{
 A symmetric sparse matrix ordered \code{beta} then \code{b}, or \code{NULL} if the
-tape could not be built.
+matrix could not be built.
 }
 \description{
 The curvature of the joint penalized negative log-likelihood in

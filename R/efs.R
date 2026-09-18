@@ -147,10 +147,138 @@
 #' @keywords internal
 .quad_S <- function(x, S) as.numeric(crossprod(x, as.numeric(S %*% x)))
 
+#' How dense the penalized Hessian will be, from the design alone
+#'
+#' \deqn{H_{jl} = \sum_i \left(\frac{\partial^2 -\log f}{\partial\eta_p
+#' \partial\eta_q}\right)_i Z_{ij} Z_{il} + S_{jl},}
+#' so \eqn{H_{jl}} can only be nonzero where some observation has both
+#' \eqn{Z_{ij}} and \eqn{Z_{il}} nonzero. Hence
+#' \eqn{pattern(H) \subseteq pattern(Z'Z) \cup pattern(S)}, with \eqn{Z} every
+#' design column across every distributional parameter.
+#'
+#' That is a statement about the design and not about the family, which is the
+#' point: it is decidable before any automatic differentiation, and building
+#' the sparse Hessian tape is precisely the cost being decided about. Checked
+#' against the true pattern on a two-smooth Gaussian, a `bs = "re"` and an
+#' `s(by = )`: 100%, 10.4% and 59.2% respectively, *equal* to the true density
+#' in all three rather than merely containing it.
+#'
+#' Containment is the safe direction anyway. A family whose parameters are
+#' orthogonal could zero a cross-block identically, making \eqn{H} sparser
+#' than this predicts; the cost of that is choosing the dense route for
+#' something that had a cheaper one, never a wrong answer.
+#'
+#' Two stages, so that neither branch pays for the other. Every design block
+#' being dense already settles it -- all columns co-occur on some row, so
+#' \eqn{Z'Z} is full -- and that is the case the crossproduct would be most
+#' expensive to form, since it costs \eqn{O(n p^2)} exactly when \eqn{Z} is
+#' dense. Only when some block is genuinely sparse is the pattern formed, and
+#' there it is cheap for the same reason.
+#'
+#' @param design From [.build_design()].
+#' @return The predicted fraction of nonzero entries of `H`, in `[0, 1]`.
+#' @keywords internal
+.hessian_density <- function(design) {
+  Zs <- c(lapply(design$parnames, function(p) design$Xfix[[p]]),
+          lapply(design$blocks, function(b) b$X))
+  Zs <- Filter(function(M) !is.null(M) && length(M) && ncol(M) > 0L, Zs)
+  if (!length(Zs)) return(1)
+  p <- design$nbeta + design$nb
+  if (p == 0L) return(1)
+
+  dens <- vapply(Zs, function(M)
+    if (inherits(M, "sparseMatrix")) Matrix::nnzero(M) / length(M)
+    else mean(M != 0), numeric(1))
+  ## Storage class is not the test: a `bs = "re"` block arrives as a dense
+  ## `matrix` of indicators and is one of the sparsest things here.
+  if (all(dens > .dense_hessian_cut)) return(1)
+
+  pat <- function(M)
+    as(as(Matrix::Matrix(as.matrix(M) != 0, sparse = TRUE), "nMatrix"),
+       "nsparseMatrix")
+  P <- Matrix::crossprod(do.call(cbind, lapply(Zs, pat)))
+  nz <- Matrix::nnzero(P)
+
+  ## The penalty can reach where the data does not: a Markov random field's
+  ## neighbour graph is not in Z'Z, whose within-block part for an incidence
+  ## basis is only the diagonal. Its pattern does not depend on theta, being
+  ## the union of the `Smats`, so no smoothing parameters are needed here.
+  for (b in design$blocks) {
+    extra <- if (identical(b$kind, "iid")) b$q else
+      sum(vapply(b$Smats, Matrix::nnzero, numeric(1)))
+    nz <- nz + extra          # an over-count, in the safe direction
+  }
+  min(nz / p^2, 1)
+}
+
+#' Whether to read the penalized Hessian off a dense object
+#'
+#' Three conditions, and all of them have to hold.
+#'
+#' The Hessian has to be predicted dense ([.hessian_density()], against
+#' [.dense_hessian_cut]), because that is what makes the sparse tape's
+#' evaluations no cheaper. The problem has to be big enough that the tape's
+#' build is worth avoiding ([.dense_hessian_min_work]), because on a small one
+#' it is already cheap and `$he()` is the slower of the two per call. And `p`
+#' has to be small enough for a dense \eqn{p \times p} to be affordable at all
+#' ([.efs_dense_max]) -- that last one is about memory rather than time, and
+#' is a backstop rather than a case expected to arise, since a model with that
+#' many coefficients and a genuinely dense Hessian has worse problems than
+#' this choice.
+#'
+#' @param design From [.build_design()].
+#' @keywords internal
+.use_dense_hessian <- function(design) {
+  p <- design$nbeta + design$nb
+  p > 0L && p <= .efs_dense_max &&
+    design$n * p^2 >= .dense_hessian_min_work &&
+    .hessian_density(design) > .dense_hessian_cut
+}
+
 ## Above this many coefficients the positive-definiteness repair stops being
 ## able to afford a dense eigendecomposition and falls back to a ridge. Same
 ## threshold as [.inner_indefinite()] uses for the same reason.
 .efs_dense_max <- 1000L
+
+## Above this predicted density the penalized Hessian is taken as dense and
+## read off an `RTMB::MakeADFun()` rather than off a composed second-order
+## tape. Measured on the two routes at the same point, same tape:
+##
+##   model                    H density   sparse tape        MakeADFun$he()
+##   film90, two s()             100%   build 1.32s          build 0.046s
+##                                      eval  0.0767s        eval  0.0855s
+##   bs = "re", 400 levels       5.5%   build 0.14s          build 0.02s
+##                                      eval  0.0078s        eval  0.2684s
+##
+## Evaluation is a wash when the Hessian really is dense and 34 times better
+## for the tape when it is not, while the tape's *build* -- which scales with
+## the nonzeros it has to produce -- costs 28 times more on the dense model
+## that gains nothing from it. So the tape is worth its build only where the
+## evaluations will be cheaper, and the crossover sits near half density.
+.dense_hessian_cut <- 0.5
+
+## Density is not the whole test, because avoiding the tape's build is only
+## worth anything when that build is expensive. It scales with the tape's
+## length times the nonzeros produced, so `n * p^2` on a dense Hessian; below
+## about a million the build is already cheap and `$he()`'s per-call cost --
+## `p` reverse sweeps, against one pass of a tape -- is what dominates, the
+## more so on a four-parameter family that takes many outer iterations.
+##
+## Measured over the example suite, dense route against sparse, same binary:
+##
+##   n*p^2    model                        speedup
+##   19e6     brownfat-BI      qREML        2.91
+##   5.6e6    VictimsOfCrime-BI   ML        3.60
+##   6.4e6    film90-JSU       qREML        1.73
+##   ---------------------------------------------- 1e6
+##   2.4e5    CD4-BCT          qREML        0.76
+##   1.2e5    mcycle-NO        qREML        0.43
+##   6.5e3    aids-PO             ML        0.15
+##
+## The wins above the line are seconds and the losses below it are tenths, so
+## the line is drawn to keep the first and drop the second rather than to
+## maximise the count of models improved.
+.dense_hessian_min_work <- 1e6
 
 ## Floor on the numerator and denominator of the multiplicative update. Both
 ## are non-negative by construction -- the numerator is a block's penalized
@@ -759,11 +887,26 @@
                          log_sigma = numeric(0)))
   Fv <- RTMB::MakeTape(fc, c(pars$beta, pars$b))
   Fg <- Fv$jacfun()
-  Fh <- Fg$jacfun(sparse = TRUE)
+
+  ## The Hessian comes from whichever route its sparsity makes cheaper; see
+  ## [.hessian_density()] for how that is decided without building either.
+  ## `MakeADFun` here is not a second engine sneaking in -- none of its
+  ## parameter mapping or random-effect machinery is used, and `DataEval` and
+  ## `force.update()` behave in it exactly as they do in a tape, which is what
+  ## lets `log_sigma` keep moving without a retape.
+  dense_H <- .use_dense_hessian(design)
+  if (dense_H) {
+    Hobj <- RTMB::MakeADFun(function(par) { RTMB::getAll(par); fc(x) },
+                            list(x = c(pars$beta, pars$b)), silent = TRUE)
+    Fh <- function(q) Hobj$he(q)
+  } else {
+    Hobj <- Fg$jacfun(sparse = TRUE)
+    Fh <- Hobj
+  }
   set_theta <- if (design$nsigma) function(th) {
     tenv$theta <- th
     tenv$const <- .prior_const(design, th)
-    Fv$force.update(); Fg$force.update(); Fh$force.update()
+    Fv$force.update(); Fg$force.update(); Hobj$force.update()
     invisible(th)
   } else function(th) invisible(th)
 

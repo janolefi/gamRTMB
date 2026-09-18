@@ -370,3 +370,93 @@ parameters when `edf()` failed, so every `"ML"` fit reported an `AIC()`
 computed with roughly a quarter of the right degrees of freedom — 1078 against
 the 1110 a REML fit of the same `mcycle` model gets — and nothing said so. The
 fallback now warns, and fires only for a fit that did not reach a mode.
+
+## Which route the penalized Hessian takes
+
+`Fg$jacfun(sparse = TRUE)` was built for every model, with no branch on the
+basis. The package author's observation, and he was right: composing a
+second-order tape costs a build that scales with the nonzeros it has to
+produce, and on a model whose Hessian is dense that build buys nothing,
+because the evaluations it yields are no cheaper than reading the same matrix
+off an `RTMB::MakeADFun()`.
+
+Measured on the two routes at the same point, same tape, all calls at
+*different* arguments -- repeating one argument is served from a cache and
+reports a hundredth of the true evaluation cost, which is how the first
+version of this measurement went wrong:
+
+```
+  model                    H density   sparse tape        MakeADFun$he()
+  film90, two s()             100%   build 1.32s          build 0.046s
+                                     eval  0.0767s        eval  0.0855s
+  bs = "re", 400 levels       5.5%   build 0.14s          build 0.02s
+                                     eval  0.0078s        eval  0.2684s
+```
+
+Evaluation is a wash on the dense model and 34 times better for the tape on
+the sparse one; the tape's build is 28 times worse on the dense model. So the
+tape earns its build exactly where the evaluations will be cheaper.
+
+### Deciding it without building either
+
+\eqn{H_{jl} = \sum_i (\partial^2 -\log f / \partial\eta_p \partial\eta_q)_i
+Z_{ij} Z_{il} + S_{jl}}, so an entry can only be nonzero where some
+observation has both factors nonzero:
+
+    pattern(H) is contained in pattern(Z'Z) u pattern(S)
+
+with `Z` every design column across every distributional parameter. That is a
+statement about the design and not about the family, so it is available before
+any AD -- which is the point, since building the sparse Hessian is the cost
+being decided about. Against the true pattern: 100% / 10.4% / 59.2% on two
+dense smooths, a `bs = "re"` and an `s(by = )`, *equal* in all three rather
+than merely containing.
+
+Two stages, so neither branch pays for the other. All design blocks dense
+already settles it, and that is the case where forming `Z'Z` would be most
+expensive; the crossproduct is formed only when some block is sparse, where it
+is cheap for the same reason. Storage class is not the test -- a `bs = "re"`
+block arrives as a dense `matrix` of indicators and is among the sparsest
+things here.
+
+### The size guard, which density alone does not give
+
+Avoiding the tape's build is only worth something when that build is
+expensive, and it scales as `n * p^2` on a dense Hessian. Below about a
+million, the build is already cheap and `$he()`'s per-call cost -- `p` reverse
+sweeps against one pass of a tape -- dominates, the more so on a
+four-parameter family that takes many outer iterations. Over the example
+suite, dense route against sparse, same binary:
+
+```
+  n*p^2    model                     speedup      absolute
+  19e6     brownfat-BI    qREML        2.91      9.46 -> 3.30s
+  5.6e6    VictimsOfCrime-BI ML        3.68      1.23 -> 0.33s
+  6.4e6    film90-JSU     qREML        1.69      7.38 -> 4.36s
+  4.0e6    rent-GA-multi  qREML        1.91      7.81 -> 4.08s
+  ------------------------------------------------------------ 1e6
+  2.4e5    CD4-BCT        qREML        0.76      1.47 -> 1.93s
+  1.2e5    mcycle-NO      qREML        0.43      0.48 -> 1.10s
+  6.5e3    aids-PO           ML        0.15      0.04 -> 0.25s
+```
+
+The wins above the line are seconds and the losses below are tenths, so the
+line keeps the first and drops the second rather than maximising the count of
+models improved. With the guard in: qREML over the suite 52.7s -> 33.2s, ML
+81.7s -> 68.9s, and nothing left below 1.0 except models that take the same
+sparse route in both arms, where the difference is timing noise on hundredths
+of a second.
+
+### What it costs
+
+The two routes are not bit-identical. They agree to ~1e-08 at a common point,
+but EFS is an iteration: that difference decides a step, and on `rent` the fit
+stops one iteration later with `log_sigma` a few percent away. The criterion
+differs by 1.1e-04 on 14045, i.e. 8e-09 relative, against the engine's own
+`tol` of 1e-08 -- and an order of magnitude tighter than the spread qREML
+already shows across starting values. It is a real change to the numbers a
+qREML fit returns, not a no-op, and the test asserts the tolerance rather than
+equality.
+
+The same branch is in `.coef_hessian()`, where `method = "ML"` wants this
+matrix exactly once and the build was the whole cost.
