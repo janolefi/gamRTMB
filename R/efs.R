@@ -235,49 +235,70 @@
     .hessian_density(design) > .dense_hessian_cut
 }
 
-## Above this many coefficients the positive-definiteness repair stops being
-## able to afford a dense eigendecomposition and falls back to a ridge. Same
-## threshold as [.inner_indefinite()] uses for the same reason.
+#' Largest coefficient count a dense matrix is formed for
+#'
+#' Above this many coefficients the positive-definiteness repair stops being
+#' able to afford a dense eigendecomposition and falls back to a ridge. Same
+#' threshold as [.inner_indefinite()] uses for the same reason, and the
+#' backstop in [.use_dense_hessian()] for the same one again.
+#'
+#' @format A single integer.
+#' @keywords internal
 .efs_dense_max <- 1000L
 
-## Above this predicted density the penalized Hessian is taken as dense and
-## read off an `RTMB::MakeADFun()` rather than off a composed second-order
-## tape. Measured on the two routes at the same point, same tape:
-##
-##   model                    H density   sparse tape        MakeADFun$he()
-##   film90, two s()             100%   build 1.32s          build 0.046s
-##                                      eval  0.0767s        eval  0.0855s
-##   bs = "re", 400 levels       5.5%   build 0.14s          build 0.02s
-##                                      eval  0.0078s        eval  0.2684s
-##
-## Evaluation is a wash when the Hessian really is dense and 34 times better
-## for the tape when it is not, while the tape's *build* -- which scales with
-## the nonzeros it has to produce -- costs 28 times more on the dense model
-## that gains nothing from it. So the tape is worth its build only where the
-## evaluations will be cheaper, and the crossover sits near half density.
+#' Predicted density above which the Hessian is treated as dense
+#'
+#' Above this the penalized Hessian is read off an [RTMB::MakeADFun()] rather
+#' than off a composed second-order tape. Measured on the two routes at the
+#' same point, same tape, every call at a *different* argument -- repeating one
+#' is served from a cache and reports a fraction of the true cost:
+#'
+#' ```
+#'   model                    H density   sparse tape      MakeADFun$he()
+#'   film90, two s()             100%   build 1.32s        build 0.046s
+#'                                      eval  0.0767s      eval  0.0855s
+#'   bs = "re", 400 levels       5.5%   build 0.14s        build 0.02s
+#'                                      eval  0.0078s      eval  0.2684s
+#' ```
+#'
+#' Evaluation is a wash when the Hessian really is dense and 34 times better
+#' for the tape when it is not, while the tape's *build* -- which scales with
+#' the nonzeros it has to produce -- costs 28 times more on the dense model
+#' that gains nothing from it. So the tape is worth its build only where the
+#' evaluations will be cheaper, and the crossover sits near half density.
+#'
+#' @format A single number in `[0, 1]`.
+#' @keywords internal
 .dense_hessian_cut <- 0.5
 
-## Density is not the whole test, because avoiding the tape's build is only
-## worth anything when that build is expensive. It scales with the tape's
-## length times the nonzeros produced, so `n * p^2` on a dense Hessian; below
-## about a million the build is already cheap and `$he()`'s per-call cost --
-## `p` reverse sweeps, against one pass of a tape -- is what dominates, the
-## more so on a four-parameter family that takes many outer iterations.
-##
-## Measured over the example suite, dense route against sparse, same binary:
-##
-##   n*p^2    model                        speedup
-##   19e6     brownfat-BI      qREML        2.91
-##   5.6e6    VictimsOfCrime-BI   ML        3.60
-##   6.4e6    film90-JSU       qREML        1.73
-##   ---------------------------------------------- 1e6
-##   2.4e5    CD4-BCT          qREML        0.76
-##   1.2e5    mcycle-NO        qREML        0.43
-##   6.5e3    aids-PO             ML        0.15
-##
-## The wins above the line are seconds and the losses below it are tenths, so
-## the line is drawn to keep the first and drop the second rather than to
-## maximise the count of models improved.
+#' Smallest problem the dense Hessian route is used on
+#'
+#' Density is not the whole test, because avoiding the tape's build is only
+#' worth anything when that build is expensive. It scales with the tape's
+#' length times the nonzeros produced, so `n * p^2` on a dense Hessian; below
+#' about a million the build is already cheap and `$he()`'s per-call cost --
+#' `p` reverse sweeps, against one pass of a tape -- is what dominates, the
+#' more so on a four-parameter family that takes many outer iterations.
+#'
+#' Measured over the example suite, dense route against sparse, same binary:
+#'
+#' ```
+#'   n*p^2    model                        speedup
+#'   19e6     brownfat-BI      qREML        2.91
+#'   5.6e6    VictimsOfCrime-BI   ML        3.60
+#'   6.4e6    film90-JSU       qREML        1.73
+#'   ---------------------------------------------- 1e6
+#'   2.4e5    CD4-BCT          qREML        0.76
+#'   1.2e5    mcycle-NO        qREML        0.43
+#'   6.5e3    aids-PO             ML        0.15
+#' ```
+#'
+#' The wins above the line are seconds and the losses below it are tenths, so
+#' the line is drawn to keep the first and drop the second rather than to
+#' maximise the count of models improved.
+#'
+#' @format A single number.
+#' @keywords internal
 .dense_hessian_min_work <- 1e6
 
 ## Floor on the numerator and denominator of the multiplicative update. Both
